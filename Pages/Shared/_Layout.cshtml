@@ -1,0 +1,205 @@
+﻿<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] - SteamCMD Web</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    <style>
+        :root {
+            --dark-bg: #1a1a1a;
+            --dark-accent: #252525;
+            --steam-blue: #1b2838;
+            --steam-light-blue: #66c0f4;
+        }
+        
+        body {
+            background-color: var(--dark-bg);
+            color: #e2e2e2;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        .navbar {
+            background-color: var(--steam-blue);
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+        }
+        
+        .navbar-brand {
+            color: var(--steam-light-blue);
+            font-weight: bold;
+        }
+        
+        .nav-link {
+            color: #e2e2e2;
+        }
+        
+        .nav-link:hover, .nav-link:focus {
+            color: var(--steam-light-blue);
+        }
+        
+        .card {
+            background-color: var(--dark-accent);
+            border: none;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            margin-bottom: 20px;
+        }
+        
+        .card-header {
+            background-color: var(--steam-blue);
+            color: var(--steam-light-blue);
+            border-bottom: none;
+            border-top-left-radius: 8px !important;
+            border-top-right-radius: 8px !important;
+        }
+        
+        .btn-primary {
+            background-color: var(--steam-light-blue);
+            border-color: var(--steam-light-blue);
+            color: var(--dark-bg);
+        }
+        
+        .btn-primary:hover, .btn-primary:focus {
+            background-color: #4da5d8;
+            border-color: #4da5d8;
+            color: var(--dark-bg);
+        }
+        
+        .btn-outline-primary {
+            border-color: var(--steam-light-blue);
+            color: var(--steam-light-blue);
+        }
+        
+        .btn-outline-primary:hover {
+            background-color: var(--steam-light-blue);
+            color: var(--dark-bg);
+        }
+        
+        .table {
+            color: #e2e2e2;
+        }
+        
+        .table thead th {
+            background-color: var(--dark-accent);
+            border-bottom: 2px solid var(--steam-light-blue);
+            color: var(--steam-light-blue);
+        }
+        
+        .table tbody tr:hover {
+            background-color: rgba(102, 192, 244, 0.1);
+        }
+        
+        .form-control, .form-select {
+            background-color: #2a2a2a;
+            border: 1px solid #444;
+            color: #e2e2e2;
+        }
+        
+        .form-control:focus, .form-select:focus {
+            background-color: #2a2a2a;
+            color: #e2e2e2;
+            border-color: var(--steam-light-blue);
+            box-shadow: 0 0 0 0.25rem rgba(102, 192, 244, 0.25);
+        }
+        
+        .server-status {
+            padding: 0.5rem;
+            border-radius: 0.5rem;
+            margin-bottom: 1rem;
+        }
+        
+        .server-status.online {
+            background-color: rgba(40, 167, 69, 0.2);
+            border: 1px solid #28a745;
+        }
+        
+        .server-status.offline {
+            background-color: rgba(220, 53, 69, 0.2);
+            border: 1px solid #dc3545;
+        }
+        
+        .status-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+        
+        .status-indicator.online {
+            background-color: #28a745;
+        }
+        
+        .status-indicator.offline {
+            background-color: #dc3545;
+        }
+        
+        .footer {
+            background-color: var(--steam-blue);
+            color: #999;
+            padding: 15px 0;
+            margin-top: 20px;
+        }
+        
+        .log-window {
+            background-color: #252525;
+            color: #e2e2e2;
+            border: 1px solid #444;
+            border-radius: 5px;
+            padding: 10px;
+            height: 300px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <nav class="navbar navbar-expand-sm navbar-dark mb-4">
+            <div class="container">
+                <a class="navbar-brand" href="/">
+                    <i class="bi bi-steam me-2"></i>SteamCMD Web
+                </a>
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target=".navbar-collapse">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+                <div class="navbar-collapse collapse d-sm-inline-flex justify-content-between">
+                    <ul class="navbar-nav flex-grow-1">
+                        <li class="nav-item">
+                            <a class="nav-link" asp-page="/Index">Trang chủ</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" asp-page="/Profiles">Quản lý Profiles</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" asp-page="/AppProfiles">Game App Profiles</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" asp-page="/ServerStatus">Trạng thái Server</a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </nav>
+    </header>
+    <div class="container">
+        <main role="main" class="pb-3">
+            @RenderBody()
+        </main>
+    </div>
+
+    <footer class="footer mt-auto py-3">
+        <div class="container text-center">
+            <span>&copy; @DateTime.Now.Year - SteamCMD Web Server</span>
+        </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="~/js/site.js" asp-append-version="true"></script>
+
+    @await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>
