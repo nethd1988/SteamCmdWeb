@@ -1,5 +1,12 @@
 go~ theo thu tu :
 
+
+git remote add origin https://github.com/nethd1988/SteamCmdWebAPI.git
+
+
+
+
+
 git add .
 git commit -m "thay doi ji go vao day"
 git push origin master
