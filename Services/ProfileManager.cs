@@ -6,29 +6,26 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
-using Microsoft.Extensions.Logging;
 using SteamCmdWeb.Models;
 
 namespace SteamCmdWeb.Services
 {
-    public class ProfileManager
+    public class AppProfileManager
     {
-        private readonly ILogger<ProfileManager> _logger;
         private readonly string _dataFolder;
         private readonly string _profilesFilePath;
         private readonly string _encryptionKey = "yourEncryptionKey123!@#";
         private static int _nextId = 1;
 
-        public ProfileManager(ILogger<ProfileManager> logger)
+        public AppProfileManager()
         {
-            _logger = logger;
             _dataFolder = Path.Combine(Directory.GetCurrentDirectory(), "Data");
             if (!Directory.Exists(_dataFolder))
             {
                 Directory.CreateDirectory(_dataFolder);
             }
             _profilesFilePath = Path.Combine(_dataFolder, "profiles.json");
-
+            
             // Initialize the next ID based on existing profiles
             var profiles = GetAllProfiles();
             if (profiles.Any())
@@ -50,9 +47,8 @@ namespace SteamCmdWeb.Services
                 var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
                 return JsonSerializer.Deserialize<List<ClientProfile>>(jsonContent, options) ?? new List<ClientProfile>();
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                _logger.LogError(ex, "Error reading profiles file");
                 return new List<ClientProfile>();
             }
         }
@@ -64,11 +60,7 @@ namespace SteamCmdWeb.Services
 
         public ClientProfile GetProfileByName(string name)
         {
-            if (string.IsNullOrEmpty(name))
-                return null;
-
-            return GetAllProfiles().FirstOrDefault(p =>
-                p.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+            return GetAllProfiles().FirstOrDefault(p => p.Name == name);
         }
 
         public void SaveProfiles(List<ClientProfile> profiles)
@@ -81,33 +73,13 @@ namespace SteamCmdWeb.Services
         public ClientProfile AddProfile(ClientProfile profile)
         {
             var profiles = GetAllProfiles();
-
-            // Kiểm tra xem profile có tồn tại trước đó dựa trên tên và AppID
-            var existingProfile = FindDuplicateProfile(profile);
-            if (existingProfile != null)
-            {
-                // Cập nhật profile thay vì thêm mới
-                existingProfile.Name = profile.Name;
-                existingProfile.AppID = profile.AppID;
-                existingProfile.InstallDirectory = profile.InstallDirectory;
-                existingProfile.SteamUsername = profile.SteamUsername;
-                existingProfile.SteamPassword = profile.SteamPassword;
-                existingProfile.Arguments = profile.Arguments;
-                existingProfile.ValidateFiles = profile.ValidateFiles;
-                existingProfile.AutoRun = profile.AutoRun;
-                existingProfile.AnonymousLogin = profile.AnonymousLogin;
-                // Giữ nguyên các trường trạng thái
-
-                SaveProfiles(profiles);
-                return existingProfile;
-            }
-
+            
             // Set new ID if not provided
             if (profile.Id <= 0)
             {
                 profile.Id = _nextId++;
             }
-
+            
             // Set current time
             profile.StartTime = DateTime.Now;
             profile.StopTime = DateTime.Now;
@@ -117,8 +89,6 @@ namespace SteamCmdWeb.Services
 
             profiles.Add(profile);
             SaveProfiles(profiles);
-
-            _logger.LogInformation("Added new profile: {Name} with ID {Id}", profile.Name, profile.Id);
             return profile;
         }
 
@@ -126,16 +96,14 @@ namespace SteamCmdWeb.Services
         {
             var profiles = GetAllProfiles();
             int index = profiles.FindIndex(p => p.Id == updatedProfile.Id);
-
+            
             if (index >= 0)
             {
                 profiles[index] = updatedProfile;
                 SaveProfiles(profiles);
-                _logger.LogInformation("Updated profile: {Name} with ID {Id}", updatedProfile.Name, updatedProfile.Id);
                 return true;
             }
-
-            _logger.LogWarning("Failed to update profile with ID {Id}: Profile not found", updatedProfile.Id);
+            
             return false;
         }
 
@@ -143,17 +111,14 @@ namespace SteamCmdWeb.Services
         {
             var profiles = GetAllProfiles();
             int initialCount = profiles.Count;
-            var profileToRemove = profiles.FirstOrDefault(p => p.Id == id);
-
-            if (profileToRemove != null)
+            profiles = profiles.Where(p => p.Id != id).ToList();
+            
+            if (profiles.Count < initialCount)
             {
-                _logger.LogInformation("Deleting profile: {Name} with ID {Id}", profileToRemove.Name, profileToRemove.Id);
-                profiles.Remove(profileToRemove);
                 SaveProfiles(profiles);
                 return true;
             }
-
-            _logger.LogWarning("Failed to delete profile with ID {Id}: Profile not found", id);
+            
             return false;
         }
 
@@ -235,35 +200,10 @@ namespace SteamCmdWeb.Services
                     }
                 }
             }
-            catch (Exception ex)
+            catch
             {
-                _logger.LogError(ex, "Error decrypting string");
                 return "[Không thể giải mã]";
             }
-        }
-
-        // Phương thức để tạo tên file duy nhất cho profile
-        public string GenerateUniqueFileName(ClientProfile profile)
-        {
-            // Tạo định danh duy nhất dựa trên tên và AppID
-            string safeFileName = $"{profile.Name}_{profile.AppID}";
-
-            // Loại bỏ các ký tự không hợp lệ cho tên file
-            safeFileName = string.Join("_", safeFileName.Split(Path.GetInvalidFileNameChars()));
-
-            // Thêm timestamp để đảm bảo độc nhất
-            string uniqueFileName = $"{safeFileName}_{DateTime.Now:yyyyMMddHHmmss}.json";
-
-            return uniqueFileName;
-        }
-
-        // Phương thức tìm kiếm profile trùng lặp
-        public ClientProfile FindDuplicateProfile(ClientProfile profile)
-        {
-            var allProfiles = GetAllProfiles();
-            return allProfiles.FirstOrDefault(p =>
-                p.Name.Equals(profile.Name, StringComparison.OrdinalIgnoreCase) &&
-                p.AppID.Equals(profile.AppID, StringComparison.OrdinalIgnoreCase));
         }
     }
 }

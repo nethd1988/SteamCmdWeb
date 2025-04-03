@@ -1,13 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using SteamCmdWeb.Models;
 using SteamCmdWeb.Services;
-using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Net.Sockets;
-using System.Text;
-using System.Text.Json;
-using System.Threading.Tasks;
 
 namespace SteamCmdWeb.Controllers
 {
@@ -127,109 +121,6 @@ namespace SteamCmdWeb.Controllers
             };
 
             return Ok(credentials);
-        }
-        
-        [HttpGet("sync")]
-        public async Task<IActionResult> SyncProfiles(string targetServer = null, int port = 61188)
-        {
-            try
-            {
-                if (string.IsNullOrEmpty(targetServer))
-                {
-                    return BadRequest("Server address is required");
-                }
-
-                var profiles = _profileManager.GetAllProfiles();
-                int successCount = 0;
-                List<string> failedProfiles = new List<string>();
-                
-                // Giả lập TCP client để gửi dữ liệu
-                using (var client = new TcpClient())
-                {
-                    try
-                    {
-                        // Set timeout để tránh chờ đợi quá lâu
-                        var connectTimeout = TimeSpan.FromSeconds(5);
-                        var task = client.ConnectAsync(targetServer, port);
-                        if (await Task.WhenAny(task, Task.Delay(connectTimeout)) != task)
-                        {
-                            return StatusCode(500, "Connection to server timed out");
-                        }
-                        
-                        using (var stream = client.GetStream())
-                        {
-                            // Gửi thông báo đến server
-                            string authCommand = $"AUTH:simple_auth_token SEND_PROFILES";
-                            byte[] authBytes = Encoding.UTF8.GetBytes(authCommand);
-                            byte[] authLengthBytes = BitConverter.GetBytes(authBytes.Length);
-                            
-                            await stream.WriteAsync(authLengthBytes, 0, authLengthBytes.Length);
-                            await stream.WriteAsync(authBytes, 0, authBytes.Length);
-                            
-                            // Đọc phản hồi
-                            byte[] responseBuffer = new byte[1024];
-                            byte[] lengthBuffer = new byte[4];
-                            
-                            await stream.ReadAsync(lengthBuffer, 0, 4);
-                            int responseLength = BitConverter.ToInt32(lengthBuffer, 0);
-                            
-                            if (responseLength > responseBuffer.Length || responseLength <= 0)
-                            {
-                                return BadRequest("Invalid response length received from server");
-                            }
-                            
-                            int bytesRead = await stream.ReadAsync(responseBuffer, 0, responseLength);
-                            string response = Encoding.UTF8.GetString(responseBuffer, 0, bytesRead);
-                            
-                            if (response != "READY_TO_RECEIVE")
-                            {
-                                return BadRequest($"Server response: {response}");
-                            }
-                            
-                            // Gửi từng profile
-                            foreach (var profile in profiles)
-                            {
-                                try
-                                {
-                                    string profileJson = JsonSerializer.Serialize(profile);
-                                    byte[] profileBytes = Encoding.UTF8.GetBytes(profileJson);
-                                    byte[] lengthBytes = BitConverter.GetBytes(profileBytes.Length);
-                                    
-                                    await stream.WriteAsync(lengthBytes, 0, lengthBytes.Length);
-                                    await stream.WriteAsync(profileBytes, 0, profileBytes.Length);
-                                    
-                                    successCount++;
-                                }
-                                catch (Exception ex)
-                                {
-                                    failedProfiles.Add(profile.Name);
-                                }
-                                
-                                // Thêm một chút độ trễ giữa các profile để tránh quá tải server
-                                await Task.Delay(100);
-                            }
-                            
-                            // Gửi marker kết thúc
-                            byte[] endMarker = BitConverter.GetBytes(0);
-                            await stream.WriteAsync(endMarker, 0, endMarker.Length);
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        return StatusCode(500, $"Error connecting to server: {ex.Message}");
-                    }
-                }
-                
-                return Ok(new { 
-                    Success = true, 
-                    Message = $"Synced {successCount} profiles successfully", 
-                    FailedProfiles = failedProfiles 
-                });
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, $"Error: {ex.Message}");
-            }
         }
     }
 }

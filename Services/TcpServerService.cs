@@ -187,10 +187,6 @@ namespace SteamCmdWeb.Services
                     {
                         await HandleSendProfilesAsync(stream, stoppingToken);
                     }
-                    else if (request == "SEND_PROFILE")
-                    {
-                        await HandleSendProfileAsync(stream, stoppingToken);
-                    }
                     else if (request == "GET_PROFILES")
                     {
                         await HandleGetProfilesAsync(stream, stoppingToken);
@@ -262,7 +258,6 @@ namespace SteamCmdWeb.Services
 
             int profileCount = 0;
             byte[] buffer = GetBufferFromPool();
-            HashSet<string> processedProfileIds = new HashSet<string>(); // Để theo dõi các profile đã xử lý
 
             try
             {
@@ -307,41 +302,20 @@ namespace SteamCmdWeb.Services
 
                         if (profile != null)
                         {
-                            // Tạo mã hash từ tên profile và AppID để kiểm tra trùng lặp
-                            string profileUniqueId = $"{profile.Name}_{profile.AppID}".ToLowerInvariant();
-
-                            // Kiểm tra xem profile này đã được xử lý trong phiên gửi hiện tại chưa
-                            if (processedProfileIds.Contains(profileUniqueId))
-                            {
-                                _logger.LogInformation("Skipping duplicate profile: {Name} (AppID: {AppID})", profile.Name, profile.AppID);
-                                continue;
-                            }
-
-                            // Đánh dấu profile này đã được xử lý
-                            processedProfileIds.Add(profileUniqueId);
-
-                            // Lưu profile mới vào thư mục backup với tên file duy nhất
-                            string uniqueFileName = GenerateUniqueFileName(profile);
-                            string filePath = Path.Combine(backupFolder, uniqueFileName);
+                            string filePath = Path.Combine(backupFolder, $"profile_{profile.Id}.json");
                             await File.WriteAllTextAsync(filePath, jsonProfile, stoppingToken);
+                            profileCount++;
+                            _logger.LogInformation("Saved profile {Name} (ID: {Id})", profile.Name, profile.Id);
 
-                            // Kiểm tra xem profile đã tồn tại trong cơ sở dữ liệu chưa
-                            var existingProfile = _profileManager.GetProfileByName(profile.Name);
-                            if (existingProfile != null && existingProfile.AppID == profile.AppID)
+                            // Cập nhật hoặc thêm profile vào danh sách chính
+                            var existingProfile = _profileManager.GetProfileById(profile.Id);
+                            if (existingProfile == null)
                             {
-                                // Profile đã tồn tại, cập nhật thông tin
-                                _logger.LogInformation("Updating existing profile: {Name} (ID: {Id})", profile.Name, existingProfile.Id);
-
-                                // Giữ lại ID hiện tại và các trường trạng thái quan trọng
-                                profile.Id = existingProfile.Id;
-                                _profileManager.UpdateProfile(profile);
+                                _profileManager.AddProfile(profile);
                             }
                             else
                             {
-                                // Profile mới, thêm vào hệ thống
-                                _logger.LogInformation("Saving new profile {Name} (AppID: {AppID})", profile.Name, profile.AppID);
-                                _profileManager.AddProfile(profile);
-                                profileCount++;
+                                _profileManager.UpdateProfile(profile);
                             }
 
                             // Xóa cache để đảm bảo dữ liệu mới nhất
@@ -358,113 +332,6 @@ namespace SteamCmdWeb.Services
                     {
                         profileBuffer = null;
                     }
-                }
-            }
-            finally
-            {
-                ReturnBufferToPool(buffer);
-            }
-        }
-
-        private async Task HandleSendProfileAsync(NetworkStream stream, CancellationToken stoppingToken)
-        {
-            await SendResponseAsync(stream, "READY_TO_RECEIVE", stoppingToken);
-            _logger.LogInformation("Sent READY_TO_RECEIVE to client for single profile");
-
-            string backupFolder = Path.Combine(_dataFolder, "Backup");
-            if (!Directory.Exists(backupFolder))
-            {
-                Directory.CreateDirectory(backupFolder);
-                _logger.LogInformation("Created Backup directory at {Path}", backupFolder);
-            }
-
-            byte[] buffer = GetBufferFromPool();
-
-            try
-            {
-                // Đọc độ dài profile
-                int bytesRead = await ReadBytesAsync(stream, buffer, 0, 4, stoppingToken);
-                if (bytesRead < 4)
-                {
-                    _logger.LogWarning("Failed to read profile length");
-                    return;
-                }
-
-                int profileLength = BitConverter.ToInt32(buffer, 0);
-                if (profileLength <= 0)
-                {
-                    _logger.LogInformation("Received empty profile data");
-                    return;
-                }
-
-                if (profileLength > 1024 * 1024) // Giới hạn kích thước 1MB
-                {
-                    _logger.LogWarning("Profile data too large: {Length}", profileLength);
-                    return;
-                }
-
-                // Đọc dữ liệu profile
-                byte[] profileBuffer = profileLength <= buffer.Length ? buffer : new byte[profileLength];
-                bytesRead = await ReadBytesAsync(stream, profileBuffer, 0, profileLength, stoppingToken);
-
-                if (bytesRead < profileLength)
-                {
-                    _logger.LogWarning("Connection closed by client before receiving full profile data");
-                    return;
-                }
-
-                string jsonProfile = Encoding.UTF8.GetString(profileBuffer, 0, bytesRead);
-                try
-                {
-                    var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-                    ClientProfile profile = JsonSerializer.Deserialize<ClientProfile>(jsonProfile, options);
-
-                    if (profile != null)
-                    {
-                        // Lưu profile vào thư mục backup với tên file duy nhất
-                        string uniqueFileName = GenerateUniqueFileName(profile);
-                        string filePath = Path.Combine(backupFolder, uniqueFileName);
-                        await File.WriteAllTextAsync(filePath, jsonProfile, stoppingToken);
-
-                        // Kiểm tra xem profile đã tồn tại chưa
-                        var existingProfile = _profileManager.GetProfileByName(profile.Name);
-                        if (existingProfile != null && existingProfile.AppID == profile.AppID)
-                        {
-                            // Profile đã tồn tại, cập nhật thông tin
-                            _logger.LogInformation("Updating existing profile: {Name} (ID: {Id})", profile.Name, existingProfile.Id);
-
-                            // Giữ lại ID và các trường trạng thái
-                            profile.Id = existingProfile.Id;
-                            profile.Status = existingProfile.Status;
-                            profile.StartTime = existingProfile.StartTime;
-                            profile.StopTime = existingProfile.StopTime;
-                            profile.Pid = existingProfile.Pid;
-                            profile.LastRun = existingProfile.LastRun;
-
-                            _profileManager.UpdateProfile(profile);
-                        }
-                        else
-                        {
-                            // Profile mới, thêm vào hệ thống
-                            _logger.LogInformation("Saving new profile {Name} (AppID: {AppID})", profile.Name, profile.AppID);
-                            _profileManager.AddProfile(profile);
-                        }
-
-                        // Xóa cache để đảm bảo dữ liệu mới nhất
-                        InvalidateProfileCache();
-
-                        _logger.LogInformation("Successfully processed profile {Name}", profile.Name);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Error processing profile JSON: {Message}", ex.Message);
-                }
-
-                // Nếu đã sử dụng buffer tạm, giải phóng nó
-                if (profileBuffer != buffer)
-                {
-                    profileBuffer = null;
                 }
             }
             finally
@@ -587,22 +454,6 @@ namespace SteamCmdWeb.Services
                 totalBytesRead += bytesRead;
             }
             return totalBytesRead;
-        }
-
-        // Tạo tên file duy nhất cho profile
-        private string GenerateUniqueFileName(ClientProfile profile)
-        {
-            // Tạo một tên file duy nhất dựa trên tên, AppID và timestamp
-            string baseName = $"{profile.Name}_{profile.AppID}";
-
-            // Loại bỏ các ký tự không hợp lệ trong tên file
-            foreach (char c in Path.GetInvalidFileNameChars())
-            {
-                baseName = baseName.Replace(c, '_');
-            }
-
-            // Thêm timestamp để đảm bảo độc nhất
-            return $"{baseName}_{DateTime.Now:yyyyMMddHHmmss}.json";
         }
 
         // Pool buffer management
