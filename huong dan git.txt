@@ -1,0 +1,5 @@
+go~ theo thu tu :
+
+git add .
+git commit -m "thay doi ji go vao day"
+git push origin master
