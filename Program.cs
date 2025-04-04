@@ -20,6 +20,9 @@ builder.Services.AddRazorPages();
 // Đăng ký các Service
 builder.Services.AddSyncServices();
 
+// Thêm SilentSyncService
+builder.Services.AddSingleton<SilentSyncService>();
+
 // Đăng ký dịch vụ giám sát hệ thống
 builder.Services.AddSingleton<SystemMonitoringService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<SystemMonitoringService>());
@@ -34,7 +37,7 @@ builder.WebHost.ConfigureKestrel(serverOptions =>
 // Thêm CORS policy
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowAll", 
+    options.AddPolicy("AllowAll",
         builder => builder
             .AllowAnyOrigin()
             .AllowAnyMethod()

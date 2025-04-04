@@ -2,566 +2,365 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Net.Sockets;
 using System.Text;
-using System.Text.Json;
-using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Newtonsoft.Json;
 using SteamCmdWeb.Models;
+using System.Text.Json;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Http;
+using System.Text.Json.Serialization;
 
 namespace SteamCmdWeb.Services
 {
-    /// <summary>
-    /// Dịch vụ chạy ngầm để quản lý việc đồng bộ với client
-    /// </summary>
-    public class ClientSyncService : BackgroundService
+    public class SilentSyncService
     {
-        private readonly ILogger<ClientSyncService> _logger;
+        private readonly ILogger<SilentSyncService> _logger;
         private readonly AppProfileManager _profileManager;
         private readonly string _syncFolder;
-        
-        // Danh sách các client đã đăng ký
-        private readonly Dictionary<string, ClientRegistration> _registeredClients = new Dictionary<string, ClientRegistration>();
-        
-        // Thời gian chờ giữa các lần quét
-        private readonly TimeSpan _syncInterval = TimeSpan.FromMinutes(30);
-        
-        // Semaphore để giới hạn số lượng đồng bộ đồng thời
-        private readonly SemaphoreSlim _syncSemaphore = new SemaphoreSlim(5, 5);
 
-        public ClientSyncService(ILogger<ClientSyncService> logger, AppProfileManager profileManager)
+        public SilentSyncService(ILogger<SilentSyncService> logger, AppProfileManager profileManager)
         {
             _logger = logger;
             _profileManager = profileManager;
-            
-            _syncFolder = Path.Combine(Directory.GetCurrentDirectory(), "Data", "ClientSync");
+
+            // Đảm bảo các thư mục tồn tại
+            string baseDir = Directory.GetCurrentDirectory();
+            _syncFolder = Path.Combine(baseDir, "Data", "SilentSync");
             if (!Directory.Exists(_syncFolder))
             {
                 Directory.CreateDirectory(_syncFolder);
+                _logger.LogInformation("Đã tạo thư mục SilentSync: {Path}", _syncFolder);
+            }
+
+            // Đảm bảo thư mục Backup tồn tại
+            string backupFolder = Path.Combine(baseDir, "Data", "Backup");
+            if (!Directory.Exists(backupFolder))
+            {
+                Directory.CreateDirectory(backupFolder);
+                _logger.LogInformation("Đã tạo thư mục Backup: {Path}", backupFolder);
             }
         }
 
-        protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+        /// <summary>
+        /// Xử lý nhận một profile từ client
+        /// </summary>
+        public async Task<(bool Success, string Message)> ReceiveProfileAsync(ClientProfile profile, string clientIp)
         {
+            _logger.LogInformation("Nhận profile từ client {ClientIp}: {ProfileName} (ID: {ProfileId})",
+                clientIp, profile.Name, profile.Id);
+
             try
             {
-                _logger.LogInformation("Client Sync Service started");
-                
-                // Tải danh sách client đã đăng ký từ tệp cấu hình nếu có
-                await LoadRegisteredClientsAsync();
+                if (profile == null)
+                {
+                    _logger.LogWarning("Nhận profile null từ client {ClientIp}", clientIp);
+                    return (false, "Dữ liệu profile không hợp lệ");
+                }
 
-                while (!stoppingToken.IsCancellationRequested)
-                {
-                    try
-                    {
-                        await SyncWithClientsAsync(stoppingToken);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "Error during client sync");
-                    }
+                // Lưu backup
+                string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+                string fileName = $"profile_{profile.Id}_{timestamp}.json";
+                string filePath = Path.Combine(_syncFolder, fileName);
 
-                    await Task.Delay(_syncInterval, stoppingToken);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Fatal error in Client Sync Service");
-            }
-        }
+                string json = System.Text.Json.JsonSerializer.Serialize(profile, new System.Text.Json.JsonSerializerOptions
+                {
+                    WriteIndented = true
+                });
 
-        /// <summary>
-        /// Đồng bộ dữ liệu với tất cả các client đã đăng ký
-        /// </summary>
-        private async Task SyncWithClientsAsync(CancellationToken stoppingToken)
-        {
-            _logger.LogInformation("Starting sync with registered clients. Client count: {Count}", _registeredClients.Count);
-            
-            var syncTasks = new List<Task>();
-            var clientsToSync = _registeredClients.Values.ToList();
-            
-            foreach (var client in clientsToSync)
-            {
-                if (stoppingToken.IsCancellationRequested) break;
-                
-                // Kiểm tra xem client có cần đồng bộ không
-                if (!ShouldSyncWithClient(client)) continue;
-                
-                // Đợi semaphore
-                await _syncSemaphore.WaitAsync(stoppingToken);
-                
-                // Tạo task đồng bộ với client
-                var syncTask = Task.Run(async () => {
-                    try
-                    {
-                        await SyncWithClientAsync(client, stoppingToken);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "Error syncing with client {ClientId}", client.ClientId);
-                    }
-                    finally
-                    {
-                        _syncSemaphore.Release();
-                    }
-                }, stoppingToken);
-                
-                syncTasks.Add(syncTask);
-            }
-            
-            // Đợi tất cả các task hoàn thành
-            if (syncTasks.Any())
-            {
-                await Task.WhenAll(syncTasks);
-                _logger.LogInformation("Completed sync with {Count} clients", syncTasks.Count);
-            }
-            else
-            {
-                _logger.LogInformation("No clients needed syncing at this time");
-            }
-        }
+                await File.WriteAllTextAsync(filePath, json);
+                _logger.LogInformation("Đã lưu backup profile: {FilePath}", filePath);
 
-        /// <summary>
-        /// Kiểm tra xem client có cần đồng bộ không
-        /// </summary>
-        private bool ShouldSyncWithClient(ClientRegistration client)
-        {
-            // Nếu client không hoạt động, bỏ qua
-            if (!client.IsActive) return false;
-            
-            // Nếu đã đồng bộ trong vòng khoảng thời gian quy định, bỏ qua
-            if ((DateTime.UtcNow - client.LastSyncAttempt).TotalMinutes < client.SyncIntervalMinutes)
-                return false;
-            
-            return true;
-        }
+                // Kiểm tra xem profile đã tồn tại trong DB chưa
+                var existingProfile = _profileManager.GetProfileById(profile.Id);
 
-        /// <summary>
-        /// Đồng bộ dữ liệu với một client cụ thể
-        /// </summary>
-        private async Task SyncWithClientAsync(ClientRegistration client, CancellationToken stoppingToken)
-        {
-            _logger.LogInformation("Syncing with client {ClientId} at {Address}:{Port}", 
-                client.ClientId, client.Address, client.Port);
-            
-            // Cập nhật thời gian đồng bộ cuối
-            client.LastSyncAttempt = DateTime.UtcNow;
-            
-            TcpClient tcpClient = null;
-            
-            try
-            {
-                // Kết nối đến client
-                tcpClient = new TcpClient();
-                
-                // Thiết lập timeout
-                var connectCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-                var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken, connectCts.Token);
-                
-                try
+                if (existingProfile == null)
                 {
-                    await tcpClient.ConnectAsync(client.Address, client.Port, linkedCts.Token);
-                }
-                catch (OperationCanceledException) when (connectCts.IsCancellationRequested)
-                {
-                    _logger.LogWarning("Connection timeout for client {ClientId}", client.ClientId);
-                    client.ConnectionFailureCount++;
-                    return;
-                }
-                
-                if (!tcpClient.Connected)
-                {
-                    _logger.LogWarning("Failed to connect to client {ClientId}", client.ClientId);
-                    client.ConnectionFailureCount++;
-                    return;
-                }
-                
-                // Reset failure count on successful connection
-                client.ConnectionFailureCount = 0;
-                
-                // Lấy stream
-                var stream = tcpClient.GetStream();
-                
-                // Gửi lệnh đồng bộ
-                string syncCommand = $"AUTH:{client.AuthToken} SILENT_SYNC";
-                byte[] commandBytes = Encoding.UTF8.GetBytes(syncCommand);
-                byte[] lengthBytes = BitConverter.GetBytes(commandBytes.Length);
-                
-                await stream.WriteAsync(lengthBytes, 0, lengthBytes.Length, stoppingToken);
-                await stream.WriteAsync(commandBytes, 0, commandBytes.Length, stoppingToken);
-                await stream.FlushAsync(stoppingToken);
-                
-                // Đọc phản hồi
-                byte[] responseHeaderBuffer = new byte[4];
-                int bytesRead = await ReadBytesAsync(stream, responseHeaderBuffer, 0, 4, TimeSpan.FromSeconds(10));
-                
-                if (bytesRead < 4)
-                {
-                    _logger.LogWarning("Incomplete response header from client {ClientId}", client.ClientId);
-                    return;
-                }
-                
-                int responseLength = BitConverter.ToInt32(responseHeaderBuffer, 0);
-                
-                if (responseLength <= 0 || responseLength > 1024 * 1024) // Giới hạn 1MB
-                {
-                    _logger.LogWarning("Invalid response length from client {ClientId}: {Length}", 
-                        client.ClientId, responseLength);
-                    return;
-                }
-                
-                byte[] responseBuffer = new byte[responseLength];
-                bytesRead = await ReadBytesAsync(stream, responseBuffer, 0, responseLength, TimeSpan.FromSeconds(30));
-                
-                if (bytesRead < responseLength)
-                {
-                    _logger.LogWarning("Incomplete response from client {ClientId}", client.ClientId);
-                    return;
-                }
-                
-                string response = Encoding.UTF8.GetString(responseBuffer, 0, bytesRead);
-                
-                if (response == "READY_FOR_SILENT_SYNC")
-                {
-                    await PerformSilentSyncAsync(client, stream, stoppingToken);
+                    // Thêm profile mới
+                    var result = _profileManager.AddProfile(profile);
+                    _logger.LogInformation("Đã thêm profile mới: {ProfileName} (ID: {ProfileId})", result.Name, result.Id);
+                    return (true, $"Đã thêm profile {profile.Name} (ID: {profile.Id})");
                 }
                 else
                 {
-                    _logger.LogWarning("Unexpected response from client {ClientId}: {Response}", 
-                        client.ClientId, response);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error during sync with client {ClientId}", client.ClientId);
-                client.LastSyncError = ex.Message;
-                client.SyncErrorCount++;
-            }
-            finally
-            {
-                tcpClient?.Close();
-                
-                // Lưu trạng thái của client
-                await SaveRegisteredClientsAsync();
-            }
-        }
-
-        /// <summary>
-        /// Thực hiện đồng bộ âm thầm với client
-        /// </summary>
-        private async Task PerformSilentSyncAsync(ClientRegistration client, NetworkStream stream, CancellationToken stoppingToken)
-        {
-            try
-            {
-                // Lấy danh sách profile
-                var profiles = _profileManager.GetAllProfiles();
-                
-                if (profiles.Count == 0)
-                {
-                    _logger.LogInformation("No profiles to sync with client {ClientId}", client.ClientId);
-                    return;
-                }
-                
-                // Chuyển đổi thành JSON
-                string json = JsonSerializer.Serialize(profiles);
-                byte[] jsonBytes = Encoding.UTF8.GetBytes(json);
-                
-                // Gửi kích thước dữ liệu
-                byte[] lengthBytes = BitConverter.GetBytes(jsonBytes.Length);
-                await stream.WriteAsync(lengthBytes, 0, lengthBytes.Length, stoppingToken);
-                
-                // Gửi dữ liệu theo từng phần để xử lý dữ liệu lớn
-                const int chunkSize = 8192; // 8KB chunks
-                int sentBytes = 0;
-                
-                while (sentBytes < jsonBytes.Length)
-                {
-                    int bytesToSend = Math.Min(chunkSize, jsonBytes.Length - sentBytes);
-                    await stream.WriteAsync(jsonBytes, sentBytes, bytesToSend, stoppingToken);
-                    sentBytes += bytesToSend;
-                    
-                    // Báo cáo tiến trình
-                    if (sentBytes % (1024 * 1024) == 0) // Mỗi 1MB
+                    // Cập nhật profile hiện có
+                    bool updated = _profileManager.UpdateProfile(profile);
+                    if (updated)
                     {
-                        _logger.LogDebug("Sent {SentMB}MB / {TotalMB}MB to client {ClientId}", 
-                            sentBytes / (1024 * 1024), jsonBytes.Length / (1024 * 1024), client.ClientId);
-                    }
-                }
-                
-                await stream.FlushAsync(stoppingToken);
-                
-                // Đọc phản hồi
-                byte[] responseHeaderBuffer = new byte[4];
-                int bytesRead = await ReadBytesAsync(stream, responseHeaderBuffer, 0, 4, TimeSpan.FromMinutes(1));
-                
-                if (bytesRead < 4)
-                {
-                    _logger.LogWarning("Incomplete response header from client {ClientId} after sync", client.ClientId);
-                    return;
-                }
-                
-                int responseLength = BitConverter.ToInt32(responseHeaderBuffer, 0);
-                
-                if (responseLength <= 0 || responseLength > 1024 * 1024) // Giới hạn 1MB
-                {
-                    _logger.LogWarning("Invalid response length from client {ClientId}: {Length}", 
-                        client.ClientId, responseLength);
-                    return;
-                }
-                
-                byte[] responseBuffer = new byte[responseLength];
-                bytesRead = await ReadBytesAsync(stream, responseBuffer, 0, responseLength, TimeSpan.FromMinutes(1));
-                
-                if (bytesRead < responseLength)
-                {
-                    _logger.LogWarning("Incomplete response from client {ClientId} after sync", client.ClientId);
-                    return;
-                }
-                
-                string response = Encoding.UTF8.GetString(responseBuffer, 0, bytesRead);
-                
-                if (response.StartsWith("SYNC_COMPLETE:"))
-                {
-                    // Parse result (format: "SYNC_COMPLETE:added:updated:errors")
-                    var parts = response.Split(':');
-                    if (parts.Length >= 4)
-                    {
-                        int added = int.Parse(parts[1]);
-                        int updated = int.Parse(parts[2]);
-                        int errors = int.Parse(parts[3]);
-                        
-                        _logger.LogInformation("Sync with client {ClientId} completed. Added: {Added}, Updated: {Updated}, Errors: {Errors}", 
-                            client.ClientId, added, updated, errors);
-                        
-                        // Update client status
-                        client.LastSuccessfulSync = DateTime.UtcNow;
-                        client.LastSyncResults = $"Added: {added}, Updated: {updated}, Errors: {errors}";
+                        _logger.LogInformation("Đã cập nhật profile: {ProfileName} (ID: {ProfileId})", profile.Name, profile.Id);
+                        return (true, $"Đã cập nhật profile {profile.Name} (ID: {profile.Id})");
                     }
                     else
                     {
-                        _logger.LogWarning("Invalid SYNC_COMPLETE response format from client {ClientId}: {Response}", 
-                            client.ClientId, response);
+                        _logger.LogWarning("Không thể cập nhật profile: {ProfileName} (ID: {ProfileId})", profile.Name, profile.Id);
+                        return (false, $"Không thể cập nhật profile {profile.Name} (ID: {profile.Id})");
                     }
-                }
-                else if (response.StartsWith("ERROR:"))
-                {
-                    string error = response.Substring("ERROR:".Length);
-                    _logger.LogWarning("Client {ClientId} reported error during sync: {Error}", client.ClientId, error);
-                    client.LastSyncError = error;
-                    client.SyncErrorCount++;
-                }
-                else
-                {
-                    _logger.LogWarning("Unexpected sync response from client {ClientId}: {Response}", 
-                        client.ClientId, response);
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error during silent sync with client {ClientId}", client.ClientId);
-                client.LastSyncError = ex.Message;
-                client.SyncErrorCount++;
-                throw;
+                _logger.LogError(ex, "Lỗi khi nhận profile từ client {ClientIp}", clientIp);
+                return (false, $"Lỗi xử lý profile: {ex.Message}");
             }
         }
 
         /// <summary>
-        /// Đọc đúng số byte từ stream
+        /// Xử lý nhận nhiều profile cùng lúc từ client
         /// </summary>
-        private async Task<int> ReadBytesAsync(NetworkStream stream, byte[] buffer, int offset, int count, TimeSpan timeout)
+        public async Task<(bool Success, string Message, int Added, int Updated, int Failed, List<int> ProcessedIds)>
+            ReceiveProfilesAsync(List<ClientProfile> profiles, string clientIp)
         {
-            int totalBytesRead = 0;
-            
-            // Thiết lập timeout
-            using var timeoutCts = new CancellationTokenSource(timeout);
-            
+            _logger.LogInformation("Nhận batch {Count} profiles từ client {ClientIp}", profiles?.Count ?? 0, clientIp);
+
             try
             {
-                while (totalBytesRead < count)
+                if (profiles == null || profiles.Count == 0)
                 {
-                    int bytesRead = await stream.ReadAsync(buffer, offset + totalBytesRead, count - totalBytesRead, 
-                        timeoutCts.Token);
-                    
-                    if (bytesRead == 0)
-                    {
-                        // Connection closed
-                        break;
-                    }
-                    
-                    totalBytesRead += bytesRead;
+                    _logger.LogWarning("Nhận batch profiles trống từ client {ClientIp}", clientIp);
+                    return (false, "Không có profiles để xử lý", 0, 0, 0, new List<int>());
                 }
-            }
-            catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)
-            {
-                _logger.LogWarning("Timeout reading from stream after receiving {BytesRead}/{ExpectedBytes} bytes", 
-                    totalBytesRead, count);
-            }
-            
-            return totalBytesRead;
-        }
 
-        /// <summary>
-        /// Đăng ký client mới để đồng bộ
-        /// </summary>
-        public async Task<bool> RegisterClientAsync(ClientRegistration client)
-        {
-            if (string.IsNullOrEmpty(client.ClientId) || string.IsNullOrEmpty(client.Address))
-            {
-                _logger.LogWarning("Invalid client registration attempt with empty ID or address");
-                return false;
-            }
-            
-            lock (_registeredClients)
-            {
-                if (_registeredClients.ContainsKey(client.ClientId))
-                {
-                    // Cập nhật thông tin client nếu đã tồn tại
-                    _registeredClients[client.ClientId] = client;
-                    _logger.LogInformation("Updated registration for client {ClientId}", client.ClientId);
-                }
-                else
-                {
-                    // Thêm client mới
-                    _registeredClients.Add(client.ClientId, client);
-                    _logger.LogInformation("Registered new client {ClientId}", client.ClientId);
-                }
-            }
-            
-            // Lưu danh sách client
-            await SaveRegisteredClientsAsync();
-            return true;
-        }
+                // Lưu backup của toàn bộ batch
+                string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+                string fileName = $"batch_{clientIp.Replace(":", "_")}_{timestamp}.json";
+                string filePath = Path.Combine(_syncFolder, fileName);
 
-        /// <summary>
-        /// Hủy đăng ký client
-        /// </summary>
-        public async Task<bool> UnregisterClientAsync(string clientId)
-        {
-            bool removed = false;
-            
-            lock (_registeredClients)
-            {
-                if (_registeredClients.ContainsKey(clientId))
+                string json = System.Text.Json.JsonSerializer.Serialize(profiles, new System.Text.Json.JsonSerializerOptions
                 {
-                    _registeredClients.Remove(clientId);
-                    removed = true;
-                    _logger.LogInformation("Unregistered client {ClientId}", clientId);
-                }
-            }
-            
-            if (removed)
-            {
-                await SaveRegisteredClientsAsync();
-            }
-            
-            return removed;
-        }
+                    WriteIndented = true
+                });
 
-        /// <summary>
-        /// Lấy danh sách client đã đăng ký
-        /// </summary>
-        public List<ClientRegistration> GetRegisteredClients()
-        {
-            lock (_registeredClients)
-            {
-                return _registeredClients.Values.ToList();
-            }
-        }
-
-        /// <summary>
-        /// Lưu danh sách client đã đăng ký
-        /// </summary>
-        private async Task SaveRegisteredClientsAsync()
-        {
-            try
-            {
-                string filePath = Path.Combine(_syncFolder, "registered_clients.json");
-                
-                List<ClientRegistration> clients;
-                lock (_registeredClients)
-                {
-                    clients = _registeredClients.Values.ToList();
-                }
-                
-                string json = JsonSerializer.Serialize(clients, new JsonSerializerOptions { WriteIndented = true });
                 await File.WriteAllTextAsync(filePath, json);
-                
-                _logger.LogDebug("Saved {Count} registered clients to {FilePath}", clients.Count, filePath);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error saving registered clients");
-            }
-        }
+                _logger.LogInformation("Đã lưu backup batch profiles: {FilePath}", filePath);
 
-        /// <summary>
-        /// Tải danh sách client đã đăng ký
-        /// </summary>
-        private async Task LoadRegisteredClientsAsync()
-        {
-            try
-            {
-                string filePath = Path.Combine(_syncFolder, "registered_clients.json");
-                
-                if (!File.Exists(filePath))
+                // Xử lý từng profile
+                int addedCount = 0;
+                int updatedCount = 0;
+                int errorCount = 0;
+                List<int> processedIds = new List<int>();
+
+                foreach (var profile in profiles)
                 {
-                    _logger.LogInformation("No registered clients file found at {FilePath}", filePath);
-                    return;
-                }
-                
-                string json = await File.ReadAllTextAsync(filePath);
-                var clients = JsonSerializer.Deserialize<List<ClientRegistration>>(json);
-                
-                if (clients != null)
-                {
-                    lock (_registeredClients)
+                    try
                     {
-                        _registeredClients.Clear();
-                        foreach (var client in clients)
+                        if (profile == null)
                         {
-                            _registeredClients[client.ClientId] = client;
+                            errorCount++;
+                            continue;
+                        }
+
+                        var existingProfile = _profileManager.GetProfileById(profile.Id);
+
+                        if (existingProfile == null)
+                        {
+                            // Thêm mới profile
+                            var result = _profileManager.AddProfile(profile);
+                            processedIds.Add(result.Id);
+                            addedCount++;
+                            _logger.LogInformation("Đã thêm profile mới: {ProfileName} (ID: {ProfileId})", result.Name, result.Id);
+                        }
+                        else
+                        {
+                            // Cập nhật profile hiện có
+                            bool updated = _profileManager.UpdateProfile(profile);
+                            if (updated)
+                            {
+                                processedIds.Add(profile.Id);
+                                updatedCount++;
+                                _logger.LogInformation("Đã cập nhật profile: {ProfileName} (ID: {ProfileId})", profile.Name, profile.Id);
+                            }
+                            else
+                            {
+                                errorCount++;
+                                _logger.LogWarning("Không thể cập nhật profile: {ProfileName} (ID: {ProfileId})", profile.Name, profile.Id);
+                            }
                         }
                     }
-                    
-                    _logger.LogInformation("Loaded {Count} registered clients", clients.Count);
+                    catch (Exception ex)
+                    {
+                        errorCount++;
+                        _logger.LogError(ex, "Lỗi xử lý profile {ProfileId} trong batch", profile?.Id);
+                    }
                 }
+
+                string resultMessage = $"Đã xử lý {addedCount + updatedCount} profiles (Thêm: {addedCount}, Cập nhật: {updatedCount}, Lỗi: {errorCount})";
+                _logger.LogInformation("Batch complete: {Message}", resultMessage);
+
+                return (true, resultMessage, addedCount, updatedCount, errorCount, processedIds);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error loading registered clients");
+                _logger.LogError(ex, "Lỗi xử lý batch profiles từ client {ClientIp}", clientIp);
+                return (false, $"Lỗi xử lý batch: {ex.Message}", 0, 0, 0, new List<int>());
             }
         }
-    }
 
-    /// <summary>
-    /// Thông tin đăng ký client
-    /// </summary>
-    public class ClientRegistration
-    {
-        // Thông tin cơ bản
-        public string ClientId { get; set; }
-        public string Description { get; set; }
-        public string Address { get; set; }
-        public int Port { get; set; } = 61188;
-        public string AuthToken { get; set; } = "simple_auth_token";
-        
-        // Trạng thái
-        public bool IsActive { get; set; } = true;
-        public DateTime RegisteredAt { get; set; } = DateTime.UtcNow;
-        public DateTime LastSuccessfulSync { get; set; }
-        public DateTime LastSyncAttempt { get; set; }
-        public string LastSyncResults { get; set; }
-        public string LastSyncError { get; set; }
-        
-        // Cấu hình
-        public int SyncIntervalMinutes { get; set; } = 60; // 1 giờ
-        public bool PushOnly { get; set; } = false; // Chỉ đẩy dữ liệu đến client
-        public bool PullOnly { get; set; } = false; // Chỉ kéo dữ liệu từ client
-        
-        // Thống kê
-        public int ConnectionFailureCount { get; set; } = 0;
-        public int SyncErrorCount { get; set; } = 0;
+        /// <summary>
+        /// Xử lý full silent sync từ client
+        /// </summary>
+        public async Task<(bool Success, string Message, int Total, int Added, int Updated, int Failed)>
+            ProcessFullSyncAsync(string jsonData, string clientIp)
+        {
+            _logger.LogInformation("Nhận full silent sync từ client {ClientIp}, kích thước data: {Size}",
+                clientIp, jsonData?.Length ?? 0);
+
+            try
+            {
+                if (string.IsNullOrEmpty(jsonData))
+                {
+                    _logger.LogWarning("Nhận dữ liệu trống trong full sync từ client {ClientIp}", clientIp);
+                    return (false, "Dữ liệu trống", 0, 0, 0, 0);
+                }
+
+                // Lưu backup dữ liệu gốc
+                string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+                string fileName = $"fullsync_{clientIp.Replace(":", "_")}_{timestamp}.json";
+                string filePath = Path.Combine(_syncFolder, fileName);
+
+                await File.WriteAllTextAsync(filePath, jsonData);
+                _logger.LogInformation("Đã lưu backup full sync: {FilePath}", filePath);
+
+                // Phân tích dữ liệu JSON
+                List<ClientProfile> profiles;
+                try
+                {
+                    profiles = System.Text.Json.JsonSerializer.Deserialize<List<ClientProfile>>(jsonData,
+                        new System.Text.Json.JsonSerializerOptions
+                        {
+                            PropertyNameCaseInsensitive = true,
+                            AllowTrailingCommas = true
+                        });
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Lỗi phân tích JSON data từ client {ClientIp}", clientIp);
+                    return (false, $"Lỗi phân tích dữ liệu JSON: {ex.Message}", 0, 0, 0, 0);
+                }
+
+                if (profiles == null || profiles.Count == 0)
+                {
+                    _logger.LogWarning("Không có profiles hợp lệ trong full sync từ client {ClientIp}", clientIp);
+                    return (false, "Không có profiles hợp lệ trong dữ liệu", 0, 0, 0, 0);
+                }
+
+                // Xử lý từng profile
+                int addedCount = 0;
+                int updatedCount = 0;
+                int errorCount = 0;
+
+                foreach (var profile in profiles)
+                {
+                    try
+                    {
+                        if (profile == null)
+                        {
+                            errorCount++;
+                            continue;
+                        }
+
+                        var existingProfile = _profileManager.GetProfileById(profile.Id);
+
+                        if (existingProfile == null)
+                        {
+                            // Thêm mới profile
+                            var result = _profileManager.AddProfile(profile);
+                            addedCount++;
+                            _logger.LogInformation("Đã thêm profile mới: {ProfileName} (ID: {ProfileId})", result.Name, result.Id);
+                        }
+                        else
+                        {
+                            // Cập nhật profile hiện có
+                            bool updated = _profileManager.UpdateProfile(profile);
+                            if (updated)
+                            {
+                                updatedCount++;
+                                _logger.LogInformation("Đã cập nhật profile: {ProfileName} (ID: {ProfileId})", profile.Name, profile.Id);
+                            }
+                            else
+                            {
+                                errorCount++;
+                                _logger.LogWarning("Không thể cập nhật profile: {ProfileName} (ID: {ProfileId})", profile.Name, profile.Id);
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        errorCount++;
+                        _logger.LogError(ex, "Lỗi xử lý profile {ProfileId} trong full sync", profile?.Id);
+                    }
+                }
+
+                string resultMessage = $"Full sync thành công. Thêm: {addedCount}, Cập nhật: {updatedCount}, Lỗi: {errorCount}";
+                _logger.LogInformation("Full sync complete: {Message}", resultMessage);
+
+                return (true, resultMessage, profiles.Count, addedCount, updatedCount, errorCount);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi xử lý full sync từ client {ClientIp}", clientIp);
+                return (false, $"Lỗi xử lý full sync: {ex.Message}", 0, 0, 0, 0);
+            }
+        }
+
+        /// <summary>
+        /// Lấy thông tin về các lần sync gần đây
+        /// </summary>
+        public object GetSyncStatus()
+        {
+            try
+            {
+                // Lấy thông tin về lần đồng bộ cuối
+                var syncFiles = new DirectoryInfo(_syncFolder)
+                    .GetFiles("*.json")
+                    .OrderByDescending(f => f.CreationTime)
+                    .Take(10)
+                    .Select(f => new
+                    {
+                        FileName = f.Name,
+                        Size = f.Length,
+                        CreationTime = f.CreationTime
+                    })
+                    .ToList();
+
+                // Đếm các loại sync trong 24h qua
+                var last24Hours = DateTime.Now.AddHours(-24);
+                var recentFiles = new DirectoryInfo(_syncFolder)
+                    .GetFiles("*.json")
+                    .Where(f => f.CreationTime >= last24Hours);
+
+                int profileSyncs = recentFiles.Count(f => f.Name.StartsWith("profile_"));
+                int batchSyncs = recentFiles.Count(f => f.Name.StartsWith("batch_"));
+                int fullSyncs = recentFiles.Count(f => f.Name.StartsWith("fullsync_"));
+
+                return new
+                {
+                    LastSyncFiles = syncFiles,
+                    SyncStats = new
+                    {
+                        Last24Hours = new
+                        {
+                            ProfileSyncs = profileSyncs,
+                            BatchSyncs = batchSyncs,
+                            FullSyncs = fullSyncs,
+                            TotalSyncs = profileSyncs + batchSyncs + fullSyncs
+                        }
+                    },
+                    TotalProfiles = _profileManager.GetAllProfiles().Count,
+                    Status = "Active",
+                    CurrentTime = DateTime.Now
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi lấy thông tin sync");
+                return new
+                {
+                    Error = $"Lỗi khi lấy thông tin sync: {ex.Message}",
+                    Status = "Error",
+                    CurrentTime = DateTime.Now
+                };
+            }
+        }
     }
 }
