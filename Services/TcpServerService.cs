@@ -24,7 +24,7 @@ namespace SteamCmdWeb.Services
         private readonly string _authToken = "simple_auth_token"; // Thay đổi nếu cần bảo mật hơn
 
         // Theo dõi các client được kết nối để tái sử dụng
-        private readonly ConcurrentDictionary<string, ClientConnection> _activeConnections = 
+        private readonly ConcurrentDictionary<string, ClientConnection> _activeConnections =
             new ConcurrentDictionary<string, ClientConnection>();
 
         // Semaphore để giới hạn số kết nối đồng thời
@@ -85,7 +85,7 @@ namespace SteamCmdWeb.Services
             {
                 _listener = new TcpListener(IPAddress.Any, 61188);
                 _listener.Start();
-                
+
                 _logger.LogInformation("TCP Server started on port 61188");
                 AddLog(new LogEntry
                 {
@@ -112,7 +112,7 @@ namespace SteamCmdWeb.Services
 
                     string clientIp = ((IPEndPoint)client.Client.RemoteEndPoint).Address.ToString();
                     string clientId = $"{clientIp}:{Guid.NewGuid()}";
-                    
+
                     var clientConnection = new ClientConnection
                     {
                         Client = client,
@@ -120,7 +120,7 @@ namespace SteamCmdWeb.Services
                         IpAddress = clientIp,
                         Id = clientId
                     };
-                    
+
                     _activeConnections[clientId] = clientConnection;
 
                     AddLog(new LogEntry
@@ -191,6 +191,7 @@ namespace SteamCmdWeb.Services
         {
             NetworkStream stream = null;
             byte[] buffer = GetBufferFromPool();
+            byte[] requestBuffer = null; // Khai báo ở phạm vi phù hợp
 
             try
             {
@@ -200,7 +201,7 @@ namespace SteamCmdWeb.Services
                 int bytesRead = await ReadBytesAsync(stream, buffer, 0, 4, stoppingToken);
                 if (bytesRead < 4)
                 {
-                    _logger.LogWarning("Failed to read request length from client {ClientId}. Bytes read: {BytesRead}", 
+                    _logger.LogWarning("Failed to read request length from client {ClientId}. Bytes read: {BytesRead}",
                         connection.Id, bytesRead);
                     return;
                 }
@@ -208,28 +209,22 @@ namespace SteamCmdWeb.Services
                 int requestLength = BitConverter.ToInt32(buffer, 0);
                 if (requestLength <= 0 || requestLength > 10 * 1024 * 1024) // Giới hạn kích thước để tránh tấn công (10MB)
                 {
-                    _logger.LogWarning("Invalid request length: {Length} from client {ClientId}", 
+                    _logger.LogWarning("Invalid request length: {Length} from client {ClientId}",
                         requestLength, connection.Id);
                     return;
                 }
 
-                // Đọc dữ liệu yêu cầu dựa trên độ dài
-                byte[] requestBuffer;
+                // Sửa CS0103: Khởi tạo requestBuffer trước khi sử dụng
+                requestBuffer = requestLength > buffer.Length ? new byte[requestLength] : buffer;
                 if (requestLength > buffer.Length)
                 {
-                    // Nếu yêu cầu quá lớn, tạo buffer mới
-                    requestBuffer = new byte[requestLength];
                     ReturnBufferToPool(buffer);
-                }
-                else
-                {
-                    requestBuffer = buffer;
                 }
 
                 bytesRead = await ReadBytesAsync(stream, requestBuffer, 0, requestLength, stoppingToken);
                 if (bytesRead < requestLength)
                 {
-                    _logger.LogWarning("Connection closed by client {ClientId} before reading full request", 
+                    _logger.LogWarning("Connection closed by client {ClientId} before reading full request",
                         connection.Id);
                     return;
                 }
@@ -241,11 +236,10 @@ namespace SteamCmdWeb.Services
                 string logRequest = request;
                 if (request.Contains("PASSWORD") || request.Contains("password"))
                 {
-                    // Ẩn mật khẩu trong log
                     logRequest = "***PASSWORD DATA HIDDEN***";
                 }
-                
-                _logger.LogInformation("Received request from client {ClientId}: {Request}", 
+
+                _logger.LogInformation("Received request from client {ClientId}: {Request}",
                     connection.Id, logRequest);
 
                 AddLog(new LogEntry
@@ -269,7 +263,7 @@ namespace SteamCmdWeb.Services
                 {
                     await SendResponseAsync(stream, "AUTH_FAILED", stoppingToken);
                     _logger.LogWarning("Client {ClientId} authentication failed", connection.Id);
-                    
+
                     AddLog(new LogEntry
                     {
                         Timestamp = DateTime.Now,
@@ -277,28 +271,173 @@ namespace SteamCmdWeb.Services
                         Level = LogLevel.Warning,
                         Source = "Auth"
                     });
-                    
+
                     Interlocked.Increment(ref _totalFailedRequests);
                 }
             }
             finally
             {
-                if (buffer != null && buffer != requestBuffer)
-                {
-                    ReturnBufferToPool(buffer);
-                }
                 if (requestBuffer != null && requestBuffer != buffer)
                 {
                     // Không trả requestBuffer vào pool vì kích thước có thể khác
                     requestBuffer = null;
                 }
+                if (buffer != null && buffer != requestBuffer)
+                {
+                    ReturnBufferToPool(buffer);
+                }
             }
         }
 
+        private async Task HandleSendProfileAsync(ClientConnection connection, NetworkStream stream, CancellationToken stoppingToken)
+        {
+            await SendResponseAsync(stream, "READY_TO_RECEIVE", stoppingToken);
+            _logger.LogInformation("Sent READY_TO_RECEIVE to client {ClientId}", connection.Id);
+
+            AddLog(new LogEntry
+            {
+                Timestamp = DateTime.Now,
+                Message = $"Ready to receive profile from {connection.IpAddress}",
+                Level = LogLevel.Information,
+                Source = "ProfileReceive"
+            });
+
+            byte[] buffer = GetBufferFromPool();
+            byte[] profileBuffer = null; // Khai báo ở phạm vi phù hợp
+
+            try
+            {
+                // Đọc độ dài của profile
+                int bytesRead = await ReadBytesAsync(stream, buffer, 0, 4, stoppingToken);
+                if (bytesRead < 4)
+                {
+                    _logger.LogWarning("Failed to read profile length from client {ClientId}", connection.Id);
+                    return;
+                }
+
+                int profileLength = BitConverter.ToInt32(buffer, 0);
+                if (profileLength <= 0 || profileLength > 5 * 1024 * 1024) // Giới hạn 5MB
+                {
+                    _logger.LogWarning("Invalid profile length from client {ClientId}: {Length}",
+                        connection.Id, profileLength);
+                    return;
+                }
+
+                // Sửa CS0103: Khởi tạo profileBuffer trước khi sử dụng
+                profileBuffer = profileLength > buffer.Length ? new byte[profileLength] : buffer;
+                if (profileLength > buffer.Length)
+                {
+                    ReturnBufferToPool(buffer);
+                }
+
+                bytesRead = await ReadBytesAsync(stream, profileBuffer, 0, profileLength, stoppingToken);
+                if (bytesRead < profileLength)
+                {
+                    _logger.LogWarning("Connection closed by client {ClientId} before reading full profile",
+                        connection.Id);
+                    return;
+                }
+
+                string jsonProfile = Encoding.UTF8.GetString(profileBuffer, 0, bytesRead);
+                try
+                {
+                    var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                    ClientProfile profile = JsonSerializer.Deserialize<ClientProfile>(jsonProfile, options);
+
+                    if (profile != null)
+                    {
+                        Interlocked.Increment(ref _totalProfilesReceived);
+
+                        // Backup profile if needed
+                        string backupFolder = Path.Combine(_dataFolder, "Backup");
+                        if (!Directory.Exists(backupFolder))
+                        {
+                            Directory.CreateDirectory(backupFolder);
+                        }
+
+                        string filePath = Path.Combine(backupFolder, $"profile_{profile.Id}_{DateTime.Now:yyyyMMdd_HHmmss}.json");
+                        await File.WriteAllTextAsync(filePath, jsonProfile, stoppingToken);
+
+                        // Thêm hoặc cập nhật profile
+                        var existingProfile = _profileManager.GetProfileById(profile.Id);
+                        if (existingProfile == null)
+                        {
+                            _profileManager.AddProfile(profile);
+
+                            _logger.LogInformation("Added new profile: {Name} (ID: {Id}) from client {ClientId}",
+                                profile.Name, profile.Id, connection.Id);
+
+                            AddLog(new LogEntry
+                            {
+                                Timestamp = DateTime.Now,
+                                Message = $"Added new profile: {profile.Name} (ID: {profile.Id}) from {connection.IpAddress}",
+                                Level = LogLevel.Information,
+                                Source = "ProfileAdd"
+                            });
+                        }
+                        else
+                        {
+                            _profileManager.UpdateProfile(profile);
+
+                            _logger.LogInformation("Updated profile: {Name} (ID: {Id}) from client {ClientId}",
+                                profile.Name, profile.Id, connection.Id);
+
+                            AddLog(new LogEntry
+                            {
+                                Timestamp = DateTime.Now,
+                                Message = $"Updated profile: {profile.Name} (ID: {profile.Id}) from {connection.IpAddress}",
+                                Level = LogLevel.Information,
+                                Source = "ProfileUpdate"
+                            });
+                        }
+
+                        // Xóa cache để đảm bảo dữ liệu mới nhất
+                        InvalidateProfileCache();
+
+                        // Trả kết quả thành công
+                        await SendResponseAsync(stream, $"SUCCESS:{profile.Id}", stoppingToken);
+                    }
+                    else
+                    {
+                        _logger.LogWarning("Received null profile from client {ClientId}", connection.Id);
+                        await SendResponseAsync(stream, "ERROR:NULL_PROFILE", stoppingToken);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error processing profile JSON from client {ClientId}", connection.Id);
+                    await SendResponseAsync(stream, $"ERROR:{ex.Message}", stoppingToken);
+
+                    AddLog(new LogEntry
+                    {
+                        Timestamp = DateTime.Now,
+                        Message = $"Error processing profile from {connection.IpAddress}: {ex.Message}",
+                        Level = LogLevel.Error,
+                        Source = "ProfileProcess"
+                    });
+
+                    Interlocked.Increment(ref _totalFailedRequests);
+                }
+            }
+            finally
+            {
+                if (profileBuffer != null && profileBuffer != buffer)
+                {
+                    profileBuffer = null; // Không trả lại pool nếu kích thước khác
+                }
+                if (buffer != null && buffer != profileBuffer)
+                {
+                    ReturnBufferToPool(buffer);
+                }
+            }
+        }
+
+        // Các phương thức khác giữ nguyên...
+
         private async Task ProcessAuthenticatedRequestAsync(
-            ClientConnection connection, 
-            string request, 
-            NetworkStream stream, 
+            ClientConnection connection,
+            string request,
+            NetworkStream stream,
             CancellationToken stoppingToken)
         {
             try
@@ -339,7 +478,7 @@ namespace SteamCmdWeb.Services
                 {
                     await SendResponseAsync(stream, "INVALID_REQUEST", stoppingToken);
                     _logger.LogWarning("Invalid request from client {ClientId}: {Request}", connection.Id, request);
-                    
+
                     AddLog(new LogEntry
                     {
                         Timestamp = DateTime.Now,
@@ -347,15 +486,15 @@ namespace SteamCmdWeb.Services
                         Level = LogLevel.Warning,
                         Source = "Request"
                     });
-                    
+
                     Interlocked.Increment(ref _totalFailedRequests);
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error processing authenticated request from client {ClientId}: {Request}", 
+                _logger.LogError(ex, "Error processing authenticated request from client {ClientId}: {Request}",
                     connection.Id, request);
-                
+
                 AddLog(new LogEntry
                 {
                     Timestamp = DateTime.Now,
@@ -363,7 +502,7 @@ namespace SteamCmdWeb.Services
                     Level = LogLevel.Error,
                     Source = "Request"
                 });
-                
+
                 Interlocked.Increment(ref _totalFailedRequests);
                 throw;
             }
@@ -379,11 +518,10 @@ namespace SteamCmdWeb.Services
                 // Gửi tiền tố độ dài
                 await stream.WriteAsync(lengthBytes, 0, lengthBytes.Length, stoppingToken);
 
-                // Gửi dữ liệu phản hồi, sử dụng buffer lớn hơn để giảm số lần gửi
+                // Gửi dữ liệu phản hồi
                 await stream.WriteAsync(responseBytes, 0, responseBytes.Length, stoppingToken);
                 await stream.FlushAsync(stoppingToken);
 
-                // Log ngắn gọn hơn để tránh spam log file
                 string logResponse = response.Length > 100 ? response.Substring(0, 100) + "..." : response;
                 _logger.LogDebug("Sent response: {Response}", logResponse);
             }
@@ -391,154 +529,6 @@ namespace SteamCmdWeb.Services
             {
                 _logger.LogError(ex, "Error sending response: {Message}", ex.Message);
                 throw;
-            }
-        }
-
-        private async Task HandleSendProfileAsync(ClientConnection connection, NetworkStream stream, CancellationToken stoppingToken)
-        {
-            // Trả lời client rằng server đã sẵn sàng nhận profile
-            await SendResponseAsync(stream, "READY_TO_RECEIVE", stoppingToken);
-            _logger.LogInformation("Sent READY_TO_RECEIVE to client {ClientId}", connection.Id);
-
-            AddLog(new LogEntry
-            {
-                Timestamp = DateTime.Now,
-                Message = $"Ready to receive profile from {connection.IpAddress}",
-                Level = LogLevel.Information,
-                Source = "ProfileReceive"
-            });
-
-            byte[] buffer = GetBufferFromPool();
-            try
-            {
-                // Đọc độ dài của profile
-                int bytesRead = await ReadBytesAsync(stream, buffer, 0, 4, stoppingToken);
-                if (bytesRead < 4)
-                {
-                    _logger.LogWarning("Failed to read profile length from client {ClientId}", connection.Id);
-                    return;
-                }
-
-                int profileLength = BitConverter.ToInt32(buffer, 0);
-                if (profileLength <= 0 || profileLength > 5 * 1024 * 1024) // Giới hạn 5MB
-                {
-                    _logger.LogWarning("Invalid profile length from client {ClientId}: {Length}", 
-                        connection.Id, profileLength);
-                    return;
-                }
-
-                // Đọc dữ liệu profile
-                byte[] profileBuffer;
-                if (profileLength > buffer.Length)
-                {
-                    profileBuffer = new byte[profileLength];
-                    ReturnBufferToPool(buffer);
-                }
-                else
-                {
-                    profileBuffer = buffer;
-                }
-
-                bytesRead = await ReadBytesAsync(stream, profileBuffer, 0, profileLength, stoppingToken);
-                if (bytesRead < profileLength)
-                {
-                    _logger.LogWarning("Connection closed by client {ClientId} before reading full profile", 
-                        connection.Id);
-                    return;
-                }
-
-                string jsonProfile = Encoding.UTF8.GetString(profileBuffer, 0, bytesRead);
-                try
-                {
-                    var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-                    ClientProfile profile = JsonSerializer.Deserialize<ClientProfile>(jsonProfile, options);
-
-                    if (profile != null)
-                    {
-                        Interlocked.Increment(ref _totalProfilesReceived);
-
-                        // Backup profile if needed
-                        string backupFolder = Path.Combine(_dataFolder, "Backup");
-                        if (!Directory.Exists(backupFolder))
-                        {
-                            Directory.CreateDirectory(backupFolder);
-                        }
-
-                        string filePath = Path.Combine(backupFolder, $"profile_{profile.Id}_{DateTime.Now:yyyyMMdd_HHmmss}.json");
-                        await File.WriteAllTextAsync(filePath, jsonProfile, stoppingToken);
-
-                        // Thêm hoặc cập nhật profile
-                        var existingProfile = _profileManager.GetProfileById(profile.Id);
-                        if (existingProfile == null)
-                        {
-                            _profileManager.AddProfile(profile);
-                            
-                            _logger.LogInformation("Added new profile: {Name} (ID: {Id}) from client {ClientId}", 
-                                profile.Name, profile.Id, connection.Id);
-                            
-                            AddLog(new LogEntry
-                            {
-                                Timestamp = DateTime.Now,
-                                Message = $"Added new profile: {profile.Name} (ID: {profile.Id}) from {connection.IpAddress}",
-                                Level = LogLevel.Information,
-                                Source = "ProfileAdd"
-                            });
-                        }
-                        else
-                        {
-                            _profileManager.UpdateProfile(profile);
-                            
-                            _logger.LogInformation("Updated profile: {Name} (ID: {Id}) from client {ClientId}", 
-                                profile.Name, profile.Id, connection.Id);
-                            
-                            AddLog(new LogEntry
-                            {
-                                Timestamp = DateTime.Now,
-                                Message = $"Updated profile: {profile.Name} (ID: {profile.Id}) from {connection.IpAddress}",
-                                Level = LogLevel.Information,
-                                Source = "ProfileUpdate"
-                            });
-                        }
-
-                        // Xóa cache để đảm bảo dữ liệu mới nhất
-                        InvalidateProfileCache();
-
-                        // Trả kết quả thành công
-                        await SendResponseAsync(stream, $"SUCCESS:{profile.Id}", stoppingToken);
-                    }
-                    else
-                    {
-                        _logger.LogWarning("Received null profile from client {ClientId}", connection.Id);
-                        await SendResponseAsync(stream, "ERROR:NULL_PROFILE", stoppingToken);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Error processing profile JSON from client {ClientId}", connection.Id);
-                    await SendResponseAsync(stream, $"ERROR:{ex.Message}", stoppingToken);
-                    
-                    AddLog(new LogEntry
-                    {
-                        Timestamp = DateTime.Now,
-                        Message = $"Error processing profile from {connection.IpAddress}: {ex.Message}",
-                        Level = LogLevel.Error,
-                        Source = "ProfileProcess"
-                    });
-                    
-                    Interlocked.Increment(ref _totalFailedRequests);
-                }
-            }
-            finally
-            {
-                if (profileBuffer != buffer)
-                {
-                    // Không trả profileBuffer vào pool vì kích thước có thể khác
-                    profileBuffer = null;
-                }
-                else
-                {
-                    ReturnBufferToPool(buffer);
-                }
             }
         }
 
@@ -570,11 +560,10 @@ namespace SteamCmdWeb.Services
             {
                 while (!stoppingToken.IsCancellationRequested)
                 {
-                    // Đọc tiền tố độ dài của profile
                     int bytesRead = await ReadBytesAsync(stream, buffer, 0, 4, stoppingToken);
                     if (bytesRead < 4)
                     {
-                        _logger.LogInformation("Client {ClientId} finished sending profiles. Total received: {Count}", 
+                        _logger.LogInformation("Client {ClientId} finished sending profiles. Total received: {Count}",
                             connection.Id, profileCount);
                         break;
                     }
@@ -582,35 +571,30 @@ namespace SteamCmdWeb.Services
                     int profileLength = BitConverter.ToInt32(buffer, 0);
                     if (profileLength == 0)
                     {
-                        _logger.LogInformation("Received end marker (0) from client {ClientId}. Total profiles: {Count}", 
+                        _logger.LogInformation("Received end marker (0) from client {ClientId}. Total profiles: {Count}",
                             connection.Id, profileCount);
                         break;
                     }
 
-                    if (profileLength < 0 || profileLength > 5 * 1024 * 1024) // Giới hạn 5MB
+                    if (profileLength < 0 || profileLength > 5 * 1024 * 1024)
                     {
-                        _logger.LogWarning("Invalid profile length from client {ClientId}: {Length}", 
+                        _logger.LogWarning("Invalid profile length from client {ClientId}: {Length}",
                             connection.Id, profileLength);
                         errorCount++;
                         break;
                     }
 
-                    // Đọc dữ liệu profile
-                    byte[] profileBuffer;
+                    byte[] profileBuffer = profileLength > buffer.Length ? new byte[profileLength] : buffer;
                     if (profileLength > buffer.Length)
                     {
-                        profileBuffer = new byte[profileLength];
-                    }
-                    else
-                    {
-                        profileBuffer = buffer;
+                        ReturnBufferToPool(buffer);
+                        buffer = profileBuffer; // Cập nhật buffer để trả lại sau
                     }
 
                     bytesRead = await ReadBytesAsync(stream, profileBuffer, 0, profileLength, stoppingToken);
-
                     if (bytesRead < profileLength)
                     {
-                        _logger.LogWarning("Connection closed by client {ClientId} before receiving full profile data", 
+                        _logger.LogWarning("Connection closed by client {ClientId} before receiving full profile data",
                             connection.Id);
                         errorCount++;
                         break;
@@ -624,11 +608,9 @@ namespace SteamCmdWeb.Services
 
                         if (profile != null)
                         {
-                            // Backup profile
                             string filePath = Path.Combine(backupFolder, $"profile_{profileCount}_{DateTime.Now:yyyyMMdd_HHmmss}.json");
                             await File.WriteAllTextAsync(filePath, jsonProfile, stoppingToken);
 
-                            // Cập nhật hoặc thêm profile
                             var existingProfile = _profileManager.GetProfileById(profile.Id);
                             if (existingProfile == null)
                             {
@@ -642,31 +624,23 @@ namespace SteamCmdWeb.Services
                             profileCount++;
                             Interlocked.Increment(ref _totalProfilesReceived);
 
-                            _logger.LogDebug("Processed profile {Count}: {Name} (ID: {Id}) from client {ClientId}", 
+                            _logger.LogDebug("Processed profile {Count}: {Name} (ID: {Id}) from client {ClientId}",
                                 profileCount, profile.Name, profile.Id, connection.Id);
                         }
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogError(ex, "Error processing profile JSON at index {Count} from client {ClientId}", 
+                        _logger.LogError(ex, "Error processing profile JSON at index {Count} from client {ClientId}",
                             profileCount, connection.Id);
                         errorCount++;
                     }
-
-                    // Nếu đã sử dụng buffer tạm, giải phóng nó
-                    if (profileBuffer != buffer)
-                    {
-                        profileBuffer = null;
-                    }
                 }
 
-                // Xóa cache để đảm bảo dữ liệu mới nhất
                 InvalidateProfileCache();
 
-                // Log kết quả
-                _logger.LogInformation("Received {Count} profiles from client {ClientId}. Errors: {ErrorCount}", 
+                _logger.LogInformation("Received {Count} profiles from client {ClientId}. Errors: {ErrorCount}",
                     profileCount, connection.Id, errorCount);
-                
+
                 AddLog(new LogEntry
                 {
                     Timestamp = DateTime.Now,
@@ -675,7 +649,6 @@ namespace SteamCmdWeb.Services
                     Source = "ProfileBatch"
                 });
 
-                // Trả kết quả cho client
                 await SendResponseAsync(stream, $"DONE:{profileCount}:{errorCount}", stoppingToken);
             }
             catch (Exception ex)
@@ -700,7 +673,7 @@ namespace SteamCmdWeb.Services
         {
             await SendResponseAsync(stream, "READY_FOR_SILENT_SYNC", stoppingToken);
             _logger.LogInformation("Starting silent sync with client {ClientId}", connection.Id);
-            
+
             AddLog(new LogEntry
             {
                 Timestamp = DateTime.Now,
@@ -712,7 +685,6 @@ namespace SteamCmdWeb.Services
             byte[] buffer = GetBufferFromPool();
             try
             {
-                // Đọc độ dài của batch JSON
                 int bytesRead = await ReadBytesAsync(stream, buffer, 0, 4, stoppingToken);
                 if (bytesRead < 4)
                 {
@@ -721,89 +693,82 @@ namespace SteamCmdWeb.Services
                 }
 
                 int dataLength = BitConverter.ToInt32(buffer, 0);
-                if (dataLength <= 0 || dataLength > 50 * 1024 * 1024) // Giới hạn 50MB
+                if (dataLength <= 0 || dataLength > 50 * 1024 * 1024)
                 {
-                    _logger.LogWarning("Invalid batch data length from client {ClientId}: {Length}", 
+                    _logger.LogWarning("Invalid batch data length from client {ClientId}: {Length}",
                         connection.Id, dataLength);
                     return;
                 }
 
-                // Đọc batch JSON
                 byte[] dataBuffer = new byte[dataLength];
                 int totalRead = 0;
                 int readSize = Math.Min(buffer.Length, dataLength);
-                
-                // Đọc từng phần để xử lý batch lớn
+
                 while (totalRead < dataLength)
                 {
                     int toRead = Math.Min(readSize, dataLength - totalRead);
                     bytesRead = await ReadBytesAsync(stream, buffer, 0, toRead, stoppingToken);
                     if (bytesRead <= 0) break;
-                    
+
                     Buffer.BlockCopy(buffer, 0, dataBuffer, totalRead, bytesRead);
                     totalRead += bytesRead;
-                    
-                    // Báo cáo tiến trình cho client nếu cần
-                    if (totalRead % (1024 * 1024) == 0) // Mỗi 1MB
+
+                    if (totalRead % (1024 * 1024) == 0)
                     {
-                        _logger.LogDebug("Received {ReceivedMB}MB / {TotalMB}MB from client {ClientId}", 
+                        _logger.LogDebug("Received {ReceivedMB}MB / {TotalMB}MB from client {ClientId}",
                             totalRead / (1024 * 1024), dataLength / (1024 * 1024), connection.Id);
                     }
                 }
-                
+
                 if (totalRead < dataLength)
                 {
-                    _logger.LogWarning("Incomplete data received from client {ClientId}: {Received}/{Total} bytes", 
+                    _logger.LogWarning("Incomplete data received from client {ClientId}: {Received}/{Total} bytes",
                         connection.Id, totalRead, dataLength);
                     await SendResponseAsync(stream, "ERROR:INCOMPLETE_DATA", stoppingToken);
                     return;
                 }
 
-                // Xử lý dữ liệu
                 string jsonData = Encoding.UTF8.GetString(dataBuffer, 0, totalRead);
                 try
                 {
-                    var options = new JsonSerializerOptions { 
+                    var options = new JsonSerializerOptions
+                    {
                         PropertyNameCaseInsensitive = true,
                         AllowTrailingCommas = true
                     };
-                    
                     var profiles = JsonSerializer.Deserialize<List<ClientProfile>>(jsonData, options);
-                    
+
                     if (profiles == null || profiles.Count == 0)
                     {
                         _logger.LogWarning("Received empty profile list from client {ClientId}", connection.Id);
                         await SendResponseAsync(stream, "ERROR:EMPTY_DATA", stoppingToken);
                         return;
                     }
-                    
-                    _logger.LogInformation("Processing {Count} profiles from silent sync with client {ClientId}", 
+
+                    _logger.LogInformation("Processing {Count} profiles from silent sync with client {ClientId}",
                         profiles.Count, connection.Id);
-                    
-                    // Lưu trữ dữ liệu gốc
+
                     string backupFolder = Path.Combine(_dataFolder, "SilentSync");
                     if (!Directory.Exists(backupFolder))
                     {
                         Directory.CreateDirectory(backupFolder);
                     }
-                    
+
                     string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
                     string backupPath = Path.Combine(backupFolder, $"sync_{connection.IpAddress}_{timestamp}.json");
                     await File.WriteAllTextAsync(backupPath, jsonData, stoppingToken);
-                    
-                    // Xử lý từng profile
+
                     int addedCount = 0;
                     int updatedCount = 0;
                     int errorCount = 0;
-                    
+
                     foreach (var profile in profiles)
                     {
                         try
                         {
                             if (profile == null) continue;
-                            
+
                             var existingProfile = _profileManager.GetProfileById(profile.Id);
-                            
                             if (existingProfile == null)
                             {
                                 _profileManager.AddProfile(profile);
@@ -814,7 +779,7 @@ namespace SteamCmdWeb.Services
                                 _profileManager.UpdateProfile(profile);
                                 updatedCount++;
                             }
-                            
+
                             Interlocked.Increment(ref _totalProfilesReceived);
                         }
                         catch (Exception ex)
@@ -823,14 +788,12 @@ namespace SteamCmdWeb.Services
                             errorCount++;
                         }
                     }
-                    
-                    // Xóa cache
+
                     InvalidateProfileCache();
-                    
-                    // Log kết quả
-                    _logger.LogInformation("Silent sync completed. Added: {AddedCount}, Updated: {UpdatedCount}, Errors: {ErrorCount}", 
+
+                    _logger.LogInformation("Silent sync completed. Added: {AddedCount}, Updated: {UpdatedCount}, Errors: {ErrorCount}",
                         addedCount, updatedCount, errorCount);
-                    
+
                     AddLog(new LogEntry
                     {
                         Timestamp = DateTime.Now,
@@ -838,8 +801,7 @@ namespace SteamCmdWeb.Services
                         Level = LogLevel.Information,
                         Source = "SilentSync"
                     });
-                    
-                    // Trả kết quả cho client
+
                     await SendResponseAsync(stream, $"SYNC_COMPLETE:{addedCount}:{updatedCount}:{errorCount}", stoppingToken);
                 }
                 catch (Exception ex)
@@ -865,7 +827,6 @@ namespace SteamCmdWeb.Services
         {
             string cacheKey = "all_profiles";
 
-            // Kiểm tra cache trước
             if (_profileNamesCache.TryGetValue(cacheKey, out var cachedProfiles) && !cachedProfiles.IsExpired)
             {
                 string response = string.Join(",", cachedProfiles.Item);
@@ -882,10 +843,9 @@ namespace SteamCmdWeb.Services
                 var profileNames = profiles.Select(p => p.Name).ToArray();
                 responseData = string.Join(",", profileNames);
 
-                // Cache results
                 _profileNamesCache[cacheKey] = new CachedItem<List<string>>(
                     profileNames.ToList(),
-                    TimeSpan.FromMinutes(5) // Cache valid for 5 minutes
+                    TimeSpan.FromMinutes(5)
                 );
             }
             else
@@ -894,7 +854,7 @@ namespace SteamCmdWeb.Services
             }
 
             await SendResponseAsync(stream, responseData, stoppingToken);
-            
+
             AddLog(new LogEntry
             {
                 Timestamp = DateTime.Now,
@@ -910,24 +870,21 @@ namespace SteamCmdWeb.Services
 
             if (profile != null)
             {
-                // Sử dụng bộ nhớ đệm để giảm áp lực GC
                 using var ms = new MemoryStream();
                 await JsonSerializer.SerializeAsync(ms, profile, new JsonSerializerOptions { WriteIndented = false }, stoppingToken);
                 ms.Position = 0;
 
-                // Sử dụng ReadAsync để tránh copy bộ nhớ
                 byte[] buffer = new byte[ms.Length];
                 await ms.ReadAsync(buffer, 0, buffer.Length, stoppingToken);
 
-                // Gửi trực tiếp bytes thay vì chuyển đổi qua string
                 byte[] lengthBytes = BitConverter.GetBytes(buffer.Length);
                 await stream.WriteAsync(lengthBytes, 0, lengthBytes.Length, stoppingToken);
                 await stream.WriteAsync(buffer, 0, buffer.Length, stoppingToken);
                 await stream.FlushAsync(stoppingToken);
 
-                _logger.LogInformation("Sent profile details for {Name} to client {ClientId}", 
+                _logger.LogInformation("Sent profile details for {Name} to client {ClientId}",
                     profileName, connection.Id);
-                
+
                 AddLog(new LogEntry
                 {
                     Timestamp = DateTime.Now,
@@ -939,9 +896,9 @@ namespace SteamCmdWeb.Services
             else
             {
                 await SendResponseAsync(stream, "PROFILE_NOT_FOUND", stoppingToken);
-                _logger.LogWarning("Profile {Name} not found for client {ClientId}", 
+                _logger.LogWarning("Profile {Name} not found for client {ClientId}",
                     profileName, connection.Id);
-                
+
                 AddLog(new LogEntry
                 {
                     Timestamp = DateTime.Now,
@@ -960,7 +917,7 @@ namespace SteamCmdWeb.Services
                 {
                     var now = DateTime.UtcNow;
                     var expiredConnections = _activeConnections
-                        .Where(kv => (now - kv.Value.LastActivity).TotalMinutes > 10) // 10 phút không hoạt động
+                        .Where(kv => (now - kv.Value.LastActivity).TotalMinutes > 10)
                         .ToList();
 
                     foreach (var conn in expiredConnections)
@@ -970,9 +927,9 @@ namespace SteamCmdWeb.Services
                             try
                             {
                                 connection.Client?.Close();
-                                _logger.LogInformation("Closed expired connection from {IpAddress} (inactive for >10 min)", 
+                                _logger.LogInformation("Closed expired connection from {IpAddress} (inactive for >10 min)",
                                     connection.IpAddress);
-                                
+
                                 AddLog(new LogEntry
                                 {
                                     Timestamp = DateTime.Now,
@@ -983,7 +940,7 @@ namespace SteamCmdWeb.Services
                             }
                             catch (Exception ex)
                             {
-                                _logger.LogWarning(ex, "Error closing expired connection from {IpAddress}", 
+                                _logger.LogWarning(ex, "Error closing expired connection from {IpAddress}",
                                     connection.IpAddress);
                             }
                         }
@@ -994,10 +951,7 @@ namespace SteamCmdWeb.Services
                         _logger.LogInformation("Cleaned up {Count} expired connections", expiredConnections.Count);
                     }
 
-                    // Tối ưu cache định kỳ
                     CleanupExpiredCache();
-                    
-                    // Dọn dẹp log entries
                     CleanupOldLogs();
                 }
                 catch (Exception ex)
@@ -1009,41 +963,37 @@ namespace SteamCmdWeb.Services
             }
         }
 
-        // Phương thức để đọc đúng số byte yêu cầu
         private async Task<int> ReadBytesAsync(NetworkStream stream, byte[] buffer, int offset, int count, CancellationToken cancellationToken)
         {
             int totalBytesRead = 0;
-            
-            // Đặt timeout
+
             using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
             using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
-            
+
             try
             {
                 while (totalBytesRead < count)
                 {
-                    int bytesRead = await stream.ReadAsync(buffer, offset + totalBytesRead, count - totalBytesRead, 
+                    int bytesRead = await stream.ReadAsync(buffer, offset + totalBytesRead, count - totalBytesRead,
                         linkedCts.Token);
-                    
+
                     if (bytesRead == 0)
                     {
-                        // Connection closed before all expected bytes were read
                         break;
                     }
-                    
+
                     totalBytesRead += bytesRead;
                 }
             }
             catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)
             {
-                _logger.LogWarning("Timeout reading from stream after receiving {BytesRead}/{ExpectedBytes} bytes", 
+                _logger.LogWarning("Timeout reading from stream after receiving {BytesRead}/{ExpectedBytes} bytes",
                     totalBytesRead, count);
             }
-            
+
             return totalBytesRead;
         }
 
-        // Pool buffer management
         private byte[] GetBufferFromPool()
         {
             if (_bufferPool.TryDequeue(out var buffer))
@@ -1057,13 +1007,11 @@ namespace SteamCmdWeb.Services
         {
             if (buffer != null && buffer.Length == BufferSize && _bufferPool.Count < MaxPoolSize)
             {
-                // Clear buffer before returning to pool
                 Array.Clear(buffer, 0, buffer.Length);
                 _bufferPool.Enqueue(buffer);
             }
         }
 
-        // Cache invalidation
         private void InvalidateProfileCache()
         {
             _profileNamesCache.Clear();
@@ -1081,21 +1029,18 @@ namespace SteamCmdWeb.Services
                 _profileNamesCache.TryRemove(key, out _);
             }
         }
-        
+
         private void CleanupOldLogs()
         {
-            // Giới hạn số lượng log entries
             while (_serverLogs.Count > MaxLogEntries)
             {
                 try
                 {
-                    // Lấy log entries cũ nhất và xóa
                     var orderedLogs = _serverLogs.OrderBy(l => l.Timestamp).ToList();
                     int removeCount = _serverLogs.Count - MaxLogEntries;
-                    
+
                     for (int i = 0; i < removeCount && i < orderedLogs.Count; i++)
                     {
-                        LogEntry entry = orderedLogs[i];
                         _serverLogs.TryTake(out _);
                     }
                 }
@@ -1106,7 +1051,7 @@ namespace SteamCmdWeb.Services
                 }
             }
         }
-        
+
         private void AddLog(LogEntry entry)
         {
             if (_serverLogs.Count < MaxLogEntries)
@@ -1115,7 +1060,6 @@ namespace SteamCmdWeb.Services
             }
             else
             {
-                // Nếu đã đầy, xóa một log cũ nhất rồi thêm mới
                 CleanupOldLogs();
                 _serverLogs.Add(entry);
             }
@@ -1150,7 +1094,7 @@ namespace SteamCmdWeb.Services
         {
             _listener?.Stop();
             _logger.LogInformation("TCP Server stopped");
-            
+
             AddLog(new LogEntry
             {
                 Timestamp = DateTime.Now,
@@ -1158,11 +1102,10 @@ namespace SteamCmdWeb.Services
                 Level = LogLevel.Information,
                 Source = "System"
             });
-            
+
             await base.StopAsync(cancellationToken);
         }
 
-        // Lớp lưu trữ cache item có thời gian hết hạn
         private class CachedItem<T>
         {
             public T Item { get; }
@@ -1175,8 +1118,7 @@ namespace SteamCmdWeb.Services
                 Expiration = DateTime.UtcNow.Add(expirationTime);
             }
         }
-        
-        // Lớp để theo dõi kết nối client
+
         private class ClientConnection
         {
             public TcpClient Client { get; set; }
@@ -1185,8 +1127,7 @@ namespace SteamCmdWeb.Services
             public string Id { get; set; }
         }
     }
-    
-    // Lớp lưu trữ log entry
+
     public class LogEntry
     {
         public DateTime Timestamp { get; set; }
@@ -1194,8 +1135,7 @@ namespace SteamCmdWeb.Services
         public LogLevel Level { get; set; }
         public string Source { get; set; }
     }
-    
-    // Lớp lưu trữ thống kê server
+
     public class ServerStats
     {
         public int ActiveConnections { get; set; }
@@ -1206,7 +1146,7 @@ namespace SteamCmdWeb.Services
         public int ServerPort { get; set; }
         public int BufferPoolSize { get; set; }
         public int CacheEntries { get; set; }
-        
+
         public TimeSpan Uptime => DateTime.Now - StartTime;
     }
 }

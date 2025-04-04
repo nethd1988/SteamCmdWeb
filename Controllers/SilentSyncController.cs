@@ -23,7 +23,7 @@ namespace SteamCmdWeb.Controllers
         {
             _profileManager = profileManager;
             _logger = logger;
-            
+
             _syncFolder = Path.Combine(Directory.GetCurrentDirectory(), "Data", "SilentSync");
             if (!Directory.Exists(_syncFolder))
             {
@@ -46,14 +46,14 @@ namespace SteamCmdWeb.Controllers
                 }
 
                 string clientIp = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-                _logger.LogInformation("Silent sync received profile: {Name} (ID: {Id}) from {ClientIp}", 
+                _logger.LogInformation("Silent sync received profile: {Name} (ID: {Id}) from {ClientIp}",
                     profile.Name, profile.Id, clientIp);
 
                 // Lưu backup
                 string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
                 string fileName = $"profile_{profile.Id}_{timestamp}.json";
                 string filePath = Path.Combine(_syncFolder, fileName);
-                
+
                 string json = JsonSerializer.Serialize(profile, new JsonSerializerOptions { WriteIndented = true });
                 System.IO.File.WriteAllText(filePath, json);
 
@@ -99,14 +99,14 @@ namespace SteamCmdWeb.Controllers
                 }
 
                 string clientIp = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-                _logger.LogInformation("Silent sync received batch of {Count} profiles from {ClientIp}", 
+                _logger.LogInformation("Silent sync received batch of {Count} profiles from {ClientIp}",
                     profiles.Count, clientIp);
 
                 // Lưu backup của toàn bộ batch
                 string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
                 string fileName = $"batch_{clientIp}_{timestamp}.json";
                 string filePath = Path.Combine(_syncFolder, fileName);
-                
+
                 string json = JsonSerializer.Serialize(profiles, new JsonSerializerOptions { WriteIndented = true });
                 System.IO.File.WriteAllText(filePath, json);
 
@@ -123,7 +123,7 @@ namespace SteamCmdWeb.Controllers
                         if (profile == null) continue;
 
                         var existingProfile = _profileManager.GetProfileById(profile.Id);
-                        
+
                         if (existingProfile == null)
                         {
                             // Thêm mới profile
@@ -153,11 +153,12 @@ namespace SteamCmdWeb.Controllers
                     }
                 }
 
-                _logger.LogInformation("Silent sync batch processed: Added {AddedCount}, Updated {UpdatedCount}, Errors {ErrorCount}", 
+                _logger.LogInformation("Silent sync batch processed: Added {AddedCount}, Updated {UpdatedCount}, Errors {ErrorCount}",
                     addedCount, updatedCount, errorCount);
 
-                return Ok(new { 
-                    Success = true, 
+                return Ok(new
+                {
+                    Success = true,
                     Message = $"Processed {addedCount + updatedCount} profiles (Added: {addedCount}, Updated: {updatedCount}, Errors: {errorCount})",
                     Added = addedCount,
                     Updated = updatedCount,
@@ -197,18 +198,18 @@ namespace SteamCmdWeb.Controllers
                 string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
                 string fileName = $"fullsync_{clientIp}_{timestamp}.json";
                 string filePath = Path.Combine(_syncFolder, fileName);
-                
+
                 System.IO.File.WriteAllText(filePath, requestBody);
 
                 // Phân tích dữ liệu
-                var options = new JsonSerializerOptions 
-                { 
+                var options = new JsonSerializerOptions
+                {
                     PropertyNameCaseInsensitive = true,
                     AllowTrailingCommas = true
                 };
-                
+
                 var profiles = JsonSerializer.Deserialize<List<ClientProfile>>(requestBody, options);
-                
+
                 if (profiles == null || profiles.Count == 0)
                 {
                     _logger.LogWarning("No valid profiles found in full sync data from {ClientIp}", clientIp);
@@ -227,7 +228,7 @@ namespace SteamCmdWeb.Controllers
                         if (profile == null) continue;
 
                         var existingProfile = _profileManager.GetProfileById(profile.Id);
-                        
+
                         if (existingProfile == null)
                         {
                             // Thêm mới profile
@@ -255,11 +256,12 @@ namespace SteamCmdWeb.Controllers
                     }
                 }
 
-                _logger.LogInformation("Full silent sync completed. Added: {AddedCount}, Updated: {UpdatedCount}, Errors: {ErrorCount}", 
+                _logger.LogInformation("Full silent sync completed. Added: {AddedCount}, Updated: {UpdatedCount}, Errors: {ErrorCount}",
                     addedCount, updatedCount, errorCount);
 
-                return Ok(new { 
-                    Success = true, 
+                return Ok(new
+                {
+                    Success = true,
                     Message = $"Full sync completed successfully. Added: {addedCount}, Updated: {updatedCount}, Errors: {errorCount}",
                     TotalProfiles = profiles.Count,
                     Added = addedCount,
