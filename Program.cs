@@ -18,7 +18,8 @@ builder.Services.AddControllers()
 builder.Services.AddRazorPages();
 
 // Đăng ký các Service
-builder.Services.AddSyncServices();
+builder.Services.AddSingleton<AppProfileManager>();
+builder.Services.AddHostedService<TcpServerService>();
 
 // Thêm SilentSyncService
 builder.Services.AddSingleton<SilentSyncService>();

@@ -1,5 +1,4 @@
 using Microsoft.AspNetCore.Mvc;
-using SteamCmdWeb.Services;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -8,21 +7,40 @@ using System.Linq;
 using System.Net.NetworkInformation;
 using System.Net;
 using System.Net.Sockets;
+using SteamCmdWeb.Models;
+using SteamCmdWeb.Services;
 
 namespace SteamCmdWeb.Controllers
 {
+    // Định nghĩa lớp ClientRegistration ngay trong file này
+    public class ClientRegistration
+    {
+        public string ClientId { get; set; }
+        public string Description { get; set; }
+        public string Address { get; set; }
+        public int Port { get; set; }
+        public string AuthToken { get; set; }
+        public bool IsActive { get; set; }
+        public DateTime RegisteredAt { get; set; }
+        public DateTime LastSuccessfulSync { get; set; }
+        public DateTime LastSyncAttempt { get; set; }
+        public string LastSyncResults { get; set; }
+        public int SyncIntervalMinutes { get; set; }
+        public bool PushOnly { get; set; }
+        public bool PullOnly { get; set; }
+        public int ConnectionFailureCount { get; set; }
+        public int SyncErrorCount { get; set; }
+    }
+
     [Route("api/[controller]")]
     [ApiController]
     public class ClientRegistrationController : ControllerBase
     {
-        private readonly ClientSyncService _clientSyncService;
         private readonly ILogger<ClientRegistrationController> _logger;
+        private static List<ClientRegistration> _clients = new List<ClientRegistration>();
 
-        public ClientRegistrationController(
-            ClientSyncService clientSyncService,
-            ILogger<ClientRegistrationController> logger)
+        public ClientRegistrationController(ILogger<ClientRegistrationController> logger)
         {
-            _clientSyncService = clientSyncService;
             _logger = logger;
         }
 
@@ -34,7 +52,7 @@ namespace SteamCmdWeb.Controllers
         {
             try
             {
-                var clients = _clientSyncService.GetRegisteredClients();
+                var clients = _clients;
 
                 // Ẩn thông tin nhạy cảm (token) khi trả về
                 var sanitizedClients = clients.Select(c => new
@@ -101,24 +119,23 @@ namespace SteamCmdWeb.Controllers
                 }
 
                 // Đăng ký client
-                bool success = await _clientSyncService.RegisterClientAsync(registration);
-
-                if (success)
+                var existingClient = _clients.FirstOrDefault(c => c.ClientId == registration.ClientId);
+                if (existingClient != null)
                 {
-                    _logger.LogInformation("Successfully registered client {ClientId} at {Address}:{Port}",
-                        registration.ClientId, registration.Address, registration.Port);
+                    // Cập nhật client hiện có
+                    _clients.Remove(existingClient);
+                }
+                _clients.Add(registration);
 
-                    return Ok(new
-                    {
-                        Success = true,
-                        Message = "Client registered successfully",
-                        ClientId = registration.ClientId
-                    });
-                }
-                else
+                _logger.LogInformation("Successfully registered client {ClientId} at {Address}:{Port}",
+                    registration.ClientId, registration.Address, registration.Port);
+
+                return Ok(new
                 {
-                    return StatusCode(500, new { Success = false, Message = "Failed to register client" });
-                }
+                    Success = true,
+                    Message = "Client registered successfully",
+                    ClientId = registration.ClientId
+                });
             }
             catch (Exception ex)
             {
@@ -140,10 +157,10 @@ namespace SteamCmdWeb.Controllers
                     return BadRequest("ClientId is required");
                 }
 
-                bool success = await _clientSyncService.UnregisterClientAsync(clientId);
-
-                if (success)
+                var existingClient = _clients.FirstOrDefault(c => c.ClientId == clientId);
+                if (existingClient != null)
                 {
+                    _clients.Remove(existingClient);
                     _logger.LogInformation("Successfully unregistered client {ClientId}", clientId);
                     return Ok(new { Success = true, Message = "Client unregistered successfully" });
                 }
@@ -172,8 +189,7 @@ namespace SteamCmdWeb.Controllers
                     return BadRequest("ClientId is required");
                 }
 
-                var clients = _clientSyncService.GetRegisteredClients();
-                var client = clients.FirstOrDefault(c => c.ClientId == clientId);
+                var client = _clients.FirstOrDefault(c => c.ClientId == clientId);
 
                 if (client == null)
                 {
@@ -183,18 +199,8 @@ namespace SteamCmdWeb.Controllers
                 // Cập nhật trạng thái
                 client.IsActive = isActive;
 
-                // Đăng ký lại với thông tin mới
-                bool success = await _clientSyncService.RegisterClientAsync(client);
-
-                if (success)
-                {
-                    _logger.LogInformation("Set client {ClientId} active status to {IsActive}", clientId, isActive);
-                    return Ok(new { Success = true, Message = $"Client active status set to {isActive}" });
-                }
-                else
-                {
-                    return StatusCode(500, new { Success = false, Message = "Failed to update client" });
-                }
+                _logger.LogInformation("Set client {ClientId} active status to {IsActive}", clientId, isActive);
+                return Ok(new { Success = true, Message = $"Client active status set to {isActive}" });
             }
             catch (Exception ex)
             {
@@ -216,8 +222,7 @@ namespace SteamCmdWeb.Controllers
                     return BadRequest("ClientId is required");
                 }
 
-                var clients = _clientSyncService.GetRegisteredClients();
-                var client = clients.FirstOrDefault(c => c.ClientId == clientId);
+                var client = _clients.FirstOrDefault(c => c.ClientId == clientId);
 
                 if (client == null)
                 {

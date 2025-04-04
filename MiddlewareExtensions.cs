@@ -69,7 +69,6 @@ namespace SteamCmdWeb
         {
             services.AddSingleton<AppProfileManager>();
             services.AddHostedService<TcpServerService>();
-            services.AddHostedService<ClientSyncService>();
 
             return services;
         }
