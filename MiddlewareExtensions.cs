@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Net;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -16,7 +17,6 @@ namespace SteamCmdWeb
         {
             return app.Use(async (context, next) =>
             {
-                // Kiểm tra xem request có phải là yêu cầu đồng bộ âm thầm không
                 if (context.Request.Path.StartsWithSegments("/api/silentsync") &&
                     context.Request.Method == "POST")
                 {
@@ -24,14 +24,12 @@ namespace SteamCmdWeb
                     logger.LogInformation("Processing silent sync request from {IpAddress}",
                         context.Connection.RemoteIpAddress);
 
-                    // Ghi lại IP của client
                     string clientIp = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
                     DateTime timestamp = DateTime.Now;
                     string logEntry = $"{timestamp:yyyy-MM-dd HH:mm:ss} - {clientIp} - Silent Sync Request{Environment.NewLine}";
 
                     try
                     {
-                        // Ghi thông tin vào file log
                         string logDir = Path.Combine(Directory.GetCurrentDirectory(), "Data", "Logs");
                         if (!Directory.Exists(logDir))
                         {
@@ -47,7 +45,6 @@ namespace SteamCmdWeb
                     }
                 }
 
-                // Tiếp tục xử lý request
                 await next();
             });
         }
@@ -59,11 +56,10 @@ namespace SteamCmdWeb
         {
             var connection = context.Connection;
             if (connection.RemoteIpAddress == null) return true;
-            if (connection.LocalIpAddress == null) return connection.RemoteIpAddress.IsLoopback();
+            if (connection.LocalIpAddress == null) return IPAddress.IsLoopback(connection.RemoteIpAddress);
 
-            // Sửa lỗi CS0428 và CS0019: Gọi IsLoopback() thay vì IsLoopback
             return connection.RemoteIpAddress.Equals(connection.LocalIpAddress) ||
-                   connection.RemoteIpAddress.IsLoopback();
+                   IPAddress.IsLoopback(connection.RemoteIpAddress);
         }
 
         /// <summary>
@@ -71,7 +67,6 @@ namespace SteamCmdWeb
         /// </summary>
         public static IServiceCollection AddSyncServices(this IServiceCollection services)
         {
-            // Đăng ký các service đồng bộ hóa
             services.AddSingleton<AppProfileManager>();
             services.AddHostedService<TcpServerService>();
             services.AddHostedService<ClientSyncService>();
@@ -86,19 +81,16 @@ namespace SteamCmdWeb
         {
             return app.Use(async (context, next) =>
             {
-                // Ghi lại thông tin về các request từ xa
                 var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
                 string clientIp = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
                 string path = context.Request.Path;
                 string method = context.Request.Method;
 
-                // Nếu không phải là request local
                 if (!IsLocalRequest(context))
                 {
                     logger.LogInformation("Remote request: {Method} {Path} from {IpAddress}",
                         method, path, clientIp);
 
-                    // Ghi thông tin vào file log
                     string logEntry = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} - {clientIp} - {method} {path}{Environment.NewLine}";
 
                     try
@@ -118,7 +110,6 @@ namespace SteamCmdWeb
                     }
                 }
 
-                // Tiếp tục xử lý request
                 await next();
             });
         }
