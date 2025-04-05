@@ -272,34 +272,64 @@
     }
     
     function loadBackupProfiles(fileName) {
-        // Hiển thị loading
-        const container = document.getElementById('profilesContainer');
-        container.innerHTML = `
-            <div class="text-center py-4">
-                <div class="spinner-border text-primary mb-3" role="status">
-                    <span class="visually-hidden">Đang tải...</span>
-                </div>
-                <p class="mb-0">Đang tải profiles từ backup...</p>
+    // Hiển thị loading
+    const container = document.getElementById('profilesContainer');
+    container.innerHTML = `
+        <div class="text-center py-4">
+            <div class="spinner-border text-primary mb-3" role="status">
+                <span class="visually-hidden">Đang tải...</span>
             </div>
-        `;
-        
-        fetch(`/api/backup/load/${fileName}`)
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error(`HTTP error! Status: ${response.status}`);
+            <p class="mb-0">Đang tải profiles từ backup...</p>
+        </div>
+    `;
+    
+    fetch(`/api/backup/load/${fileName}`)
+        .then(response => {
+            if (!response.ok) {
+                if (response.status === 404) {
+                    throw new Error(`File backup không tồn tại: ${fileName}`);
+                } else if (response.status === 400) {
+                    throw new Error(`Lỗi tham số: ${fileName}`);
+                } else {
+                    throw new Error(`Lỗi HTTP! Status: ${response.status}`);
                 }
-                return response.json();
-            })
-            .then(profiles => {
-                currentBackupProfiles = profiles;
-                displayProfileList(profiles);
+            }
+            return response.json();
+        })
+        .then(data => {
+            // Kiểm tra cấu trúc dữ liệu
+            if (data.success === false) {
+                throw new Error(data.message || "Không thể tải profiles từ backup");
+            }
+            
+            // Kiểm tra nếu profiles là null
+            if (!data || (Array.isArray(data) && data.length === 0)) {
+                displayError('Không có profiles nào trong file backup này.');
+                return;
+            }
+            
+            // Kiểm tra nếu data là profiles array 
+            if (Array.isArray(data)) {
+                currentBackupProfiles = data;
+                displayProfileList(data);
                 document.getElementById('importAllBtn').disabled = false;
-            })
-            .catch(error => {
-                console.error('Lỗi khi tải profiles từ backup:', error);
-                displayError('Không thể tải profiles từ backup. Vui lòng thử lại sau.');
-            });
-    }
+            } 
+            // Kiểm tra nếu data có thuộc tính profiles
+            else if (data.profiles) {
+                currentBackupProfiles = data.profiles;
+                displayProfileList(data.profiles);
+                document.getElementById('importAllBtn').disabled = false;
+            }
+            // Trường hợp không nhận dạng được
+            else {
+                throw new Error("Định dạng dữ liệu không hợp lệ");
+            }
+        })
+        .catch(error => {
+            console.error('Lỗi khi tải profiles từ backup:', error);
+            displayError(error.message || 'Không thể tải profiles từ backup. Vui lòng thử lại sau.');
+        });
+}
     
     function handleFileUpload(file) {
         if (!file) return;

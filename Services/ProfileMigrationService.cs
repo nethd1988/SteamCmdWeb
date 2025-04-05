@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -159,19 +159,32 @@ namespace SteamCmdWeb.Services
                 }
 
                 string jsonContent = await File.ReadAllTextAsync(filePath);
-                var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+
+                // Thêm xử lý linh hoạt hơn với JsonSerializerOptions
+                var options = new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true,
+                    AllowTrailingCommas = true,
+                    ReadCommentHandling = JsonCommentHandling.Skip
+                };
 
                 var profiles = JsonSerializer.Deserialize<List<ClientProfile>>(jsonContent, options);
 
-                _logger.LogInformation("Loaded {Count} profiles from backup file {FileName}",
-                    profiles?.Count ?? 0, fileName);
+                if (profiles == null)
+                {
+                    _logger.LogWarning("Failed to deserialize backup file: {FileName}", fileName);
+                    return new List<ClientProfile>();
+                }
 
-                return profiles ?? new List<ClientProfile>();
+                _logger.LogInformation("Loaded {Count} profiles from backup file {FileName}",
+                    profiles.Count, fileName);
+
+                return profiles;
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error loading profiles from backup file {FileName}", fileName);
-                return new List<ClientProfile>();
+                throw; // Để controller xử lý ngoại lệ
             }
         }
     }

@@ -7,6 +7,7 @@ using System.IO;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using System.Linq;
+using System.Text.Json;
 
 namespace SteamCmdWeb.Controllers
 {
@@ -84,26 +85,51 @@ namespace SteamCmdWeb.Controllers
                 {
                     return BadRequest(new { Success = false, Message = "Tên file không được để trống" });
                 }
-                
+
                 // Kiểm tra file có tồn tại không
                 var backups = _migrationService.GetBackupFiles();
                 var backupFile = backups.FirstOrDefault(b => b.FileName == fileName);
-                
+
                 if (backupFile == null)
                 {
                     return NotFound(new { Success = false, Message = $"Không tìm thấy file backup: {fileName}" });
                 }
-                
-                var profiles = await _migrationService.LoadProfilesFromBackup(fileName);
-                
-                if (profiles == null || profiles.Count == 0)
+
+                // Thử đọc file trực tiếp nếu không thể đọc từ service
+                try
                 {
-                    return Ok(new { Success = true, Message = "Không có profiles nào trong file backup", Profiles = new List<ClientProfile>() });
+                    var profiles = await _migrationService.LoadProfilesFromBackup(fileName);
+
+                    if (profiles == null)
+                    {
+                        // Thử cách khác nếu LoadProfilesFromBackup trả về null
+                        string filePath = backupFile.FullPath;
+                        string jsonContent = await System.IO.File.ReadAllTextAsync(filePath);
+
+                        var options = new JsonSerializerOptions
+                        {
+                            PropertyNameCaseInsensitive = true,
+                            AllowTrailingCommas = true,
+                            ReadCommentHandling = JsonCommentHandling.Skip
+                        };
+
+                        profiles = JsonSerializer.Deserialize<List<ClientProfile>>(jsonContent, options);
+                    }
+
+                    if (profiles == null || profiles.Count == 0)
+                    {
+                        return Ok(new { Success = true, Message = "Không có profiles nào trong file backup", Profiles = new List<ClientProfile>() });
+                    }
+
+                    _logger.LogInformation("Loaded {Count} profiles from backup file {FileName}", profiles.Count, fileName);
+
+                    return Ok(profiles);
                 }
-                
-                _logger.LogInformation("Loaded {Count} profiles from backup file {FileName}", profiles.Count, fileName);
-                
-                return Ok(profiles);
+                catch (JsonException jsonEx)
+                {
+                    _logger.LogError(jsonEx, "JSON parsing error for backup file {FileName}", fileName);
+                    return StatusCode(500, new { Success = false, Message = $"Lỗi phân tích dữ liệu JSON: {jsonEx.Message}" });
+                }
             }
             catch (Exception ex)
             {
