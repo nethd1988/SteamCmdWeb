@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using SteamCmdWeb.Models;
 
@@ -27,7 +28,7 @@ namespace SteamCmdWeb.Services
             }
         }
 
-        public async Task<(int Added, int Skipped)> MigrateProfilesToAppProfiles(List<ClientProfile> profiles, bool skipDuplicateCheck = false)
+        public async Task<(int, int)> MigrateProfilesToAppProfiles(List<ClientProfile> profiles, bool skipDuplicateCheck = false)
         {
             int added = 0;
             int skipped = 0;
@@ -40,50 +41,75 @@ namespace SteamCmdWeb.Services
             // Get existing app profiles for comparison
             var existingProfiles = _appProfileManager.GetAllProfiles();
 
+            // Sử dụng HashSet để theo dõi các ID đã xử lý
+            var processedProfileIds = new HashSet<int>();
+            var processedUserNames = new HashSet<string>();
+
             foreach (var profile in profiles)
             {
                 try
                 {
+                    if (profile == null) continue;
+
+                    // Bỏ qua nếu ID đã được xử lý
+                    if (profile.Id > 0 && processedProfileIds.Contains(profile.Id))
+                    {
+                        skipped++;
+                        continue;
+                    }
+
                     // Check if profile already exists (by ID or by name)
                     bool exists = existingProfiles.Any(p => p.Id == profile.Id ||
-                                                          (p.Name == profile.Name && p.AppID == profile.AppID));
+                                                        (p.Name == profile.Name && p.AppID == profile.AppID));
 
                     // Check for duplicate credentials (same username and password)
                     bool hasDuplicateCredentials = false;
-                    if (!skipDuplicateCheck && !string.IsNullOrEmpty(profile.SteamUsername) && !string.IsNullOrEmpty(profile.SteamPassword))
+                    if (!skipDuplicateCheck && !string.IsNullOrEmpty(profile.SteamUsername))
                     {
+                        // Kiểm tra username trong hệ thống
                         hasDuplicateCredentials = existingProfiles.Any(p =>
-                            p.SteamUsername == profile.SteamUsername &&
-                            p.SteamPassword == profile.SteamPassword);
+                            p.SteamUsername == profile.SteamUsername);
+
+                        // Kiểm tra username trong danh sách đã xử lý
+                        if (!hasDuplicateCredentials && processedUserNames.Contains(profile.SteamUsername))
+                        {
+                            hasDuplicateCredentials = true;
+                        }
                     }
 
-                    // If the profile exists but credentials don't, add it anyway
-                    if (exists && hasDuplicateCredentials)
+                    // Bỏ qua nếu trùng lặp credentials (trừ khi skipDuplicateCheck = true)
+                    if (!skipDuplicateCheck && hasDuplicateCredentials)
                     {
                         _logger.LogInformation("Skipping profile {Name} (ID: {Id}) - duplicate credentials",
                             profile.Name, profile.Id);
                         skipped++;
+                        continue;
                     }
-                    else
+
+                    // Add the profile, ensuring it gets a new ID if needed
+                    if (exists)
                     {
-                        // Add the profile, ensuring it gets a new ID if needed
-                        if (exists)
-                        {
-                            // If game is duplicate but credentials aren't, assign new ID
-                            profile.Id = 0; // AppProfileManager will assign a new ID
-                        }
-
-                        _appProfileManager.AddProfile(profile);
-                        added++;
-
-                        _logger.LogInformation("Added profile {Name} (ID: {Id}) to AppProfiles",
-                            profile.Name, profile.Id);
+                        // If game is duplicate but credentials aren't, assign new ID
+                        profile.Id = 0; // AppProfileManager will assign a new ID
                     }
+
+                    var addedProfile = _appProfileManager.AddProfile(profile);
+                    added++;
+
+                    // Lưu các thông tin đã xử lý để tránh trùng lặp
+                    processedProfileIds.Add(addedProfile.Id);
+                    if (!string.IsNullOrEmpty(profile.SteamUsername))
+                    {
+                        processedUserNames.Add(profile.SteamUsername);
+                    }
+
+                    _logger.LogInformation("Added profile {Name} (ID: {Id}) to AppProfiles",
+                        profile.Name, profile.Id);
                 }
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "Error adding profile {Name} (ID: {Id}) to AppProfiles",
-                        profile.Name, profile.Id);
+                        profile?.Name, profile?.Id);
                     skipped++;
                 }
             }
@@ -124,6 +150,12 @@ namespace SteamCmdWeb.Services
         {
             try
             {
+                if (!Directory.Exists(_backupFolder))
+                {
+                    Directory.CreateDirectory(_backupFolder);
+                    return new List<BackupInfo>();
+                }
+
                 var backupFiles = new DirectoryInfo(_backupFolder)
                     .GetFiles("*.json")
                     .OrderByDescending(f => f.CreationTime)

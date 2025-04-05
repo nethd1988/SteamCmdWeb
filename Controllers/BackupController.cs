@@ -55,15 +55,16 @@ namespace SteamCmdWeb.Controllers
                 }
 
                 string result = await _migrationService.BackupClientProfiles(profiles);
-                
+
                 // Lưu lại thời gian tạo backup
                 var now = DateTime.Now;
                 var timestamp = now.ToString("dd/MM/yyyy HH:mm:ss");
-                
+
                 _logger.LogInformation("Created backup with {Count} profiles at {Timestamp}", profiles.Count, timestamp);
-                
-                return Ok(new { 
-                    Success = true, 
+
+                return Ok(new
+                {
+                    Success = true,
                     Message = result,
                     Timestamp = timestamp,
                     ProfileCount = profiles.Count
@@ -100,22 +101,6 @@ namespace SteamCmdWeb.Controllers
                 {
                     var profiles = await _migrationService.LoadProfilesFromBackup(fileName);
 
-                    if (profiles == null)
-                    {
-                        // Thử cách khác nếu LoadProfilesFromBackup trả về null
-                        string filePath = backupFile.FullPath;
-                        string jsonContent = await System.IO.File.ReadAllTextAsync(filePath);
-
-                        var options = new JsonSerializerOptions
-                        {
-                            PropertyNameCaseInsensitive = true,
-                            AllowTrailingCommas = true,
-                            ReadCommentHandling = JsonCommentHandling.Skip
-                        };
-
-                        profiles = JsonSerializer.Deserialize<List<ClientProfile>>(jsonContent, options);
-                    }
-
                     if (profiles == null || profiles.Count == 0)
                     {
                         return Ok(new { Success = true, Message = "Không có profiles nào trong file backup", Profiles = new List<ClientProfile>() });
@@ -129,6 +114,11 @@ namespace SteamCmdWeb.Controllers
                 {
                     _logger.LogError(jsonEx, "JSON parsing error for backup file {FileName}", fileName);
                     return StatusCode(500, new { Success = false, Message = $"Lỗi phân tích dữ liệu JSON: {jsonEx.Message}" });
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error loading profiles from backup file {FileName}", fileName);
+                    return StatusCode(500, new { Success = false, Message = $"Lỗi: {ex.Message}" });
                 }
             }
             catch (Exception ex)
@@ -148,12 +138,15 @@ namespace SteamCmdWeb.Controllers
                     return BadRequest(new { Success = false, Message = "Không có profiles nào để di chuyển" });
                 }
 
-                var (added, skipped) = await _migrationService.MigrateProfilesToAppProfiles(profiles, skipDuplicateCheck);
-                
+                var result = await _migrationService.MigrateProfilesToAppProfiles(profiles, skipDuplicateCheck);
+                int added = result.Item1;
+                int skipped = result.Item2;
+
                 _logger.LogInformation("Migrated profiles to App Profiles: Added {Added}, Skipped {Skipped}", added, skipped);
-                
-                return Ok(new { 
-                    Success = true, 
+
+                return Ok(new
+                {
+                    Success = true,
                     Message = $"Đã hoàn thành di chuyển. Đã thêm: {added}, Đã bỏ qua: {skipped}",
                     Added = added,
                     Skipped = skipped,
