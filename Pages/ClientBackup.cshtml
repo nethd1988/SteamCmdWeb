@@ -95,6 +95,44 @@
     </div>
 </div>
 
+<!-- Modal xem thông tin chi tiết tài khoản -->
+<div class="modal fade" id="accountDetailsModal" tabindex="-1" aria-labelledby="accountDetailsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content bg-dark">
+            <div class="modal-header">
+                <h5 class="modal-title" id="accountDetailsModalLabel">Thông tin tài khoản</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Tên tài khoản:</label>
+                    <div class="input-group">
+                        <input type="text" class="form-control" id="accountUsername" readonly>
+                        <button class="btn btn-outline-secondary copy-btn" data-target="accountUsername">
+                            <i class="bi bi-clipboard"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Mật khẩu:</label>
+                    <div class="input-group">
+                        <input type="password" class="form-control" id="accountPassword" readonly>
+                        <button class="btn btn-outline-secondary" id="togglePassword">
+                            <i class="bi bi-eye"></i>
+                        </button>
+                        <button class="btn btn-outline-secondary copy-btn" data-target="accountPassword">
+                            <i class="bi bi-clipboard"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Đóng</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 @section Scripts {
 <script>
     document.addEventListener('DOMContentLoaded', function() {
@@ -116,6 +154,43 @@
         });
         
         document.getElementById('importAllBtn').addEventListener('click', importSelectedProfiles);
+        
+        // Thêm sự kiện ẩn/hiện mật khẩu
+        document.getElementById('togglePassword').addEventListener('click', function() {
+            const passwordInput = document.getElementById('accountPassword');
+            const icon = this.querySelector('i');
+            
+            if (passwordInput.type === 'password') {
+                passwordInput.type = 'text';
+                icon.classList.remove('bi-eye');
+                icon.classList.add('bi-eye-slash');
+            } else {
+                passwordInput.type = 'password';
+                icon.classList.remove('bi-eye-slash');
+                icon.classList.add('bi-eye');
+            }
+        });
+        
+        // Thêm sự kiện sao chép vào clipboard
+        document.querySelectorAll('.copy-btn').forEach(button => {
+            button.addEventListener('click', function() {
+                const targetId = this.getAttribute('data-target');
+                const input = document.getElementById(targetId);
+                
+                input.select();
+                document.execCommand('copy');
+                
+                // Hiển thị thông báo đã sao chép
+                const icon = this.querySelector('i');
+                icon.classList.remove('bi-clipboard');
+                icon.classList.add('bi-clipboard-check');
+                
+                setTimeout(() => {
+                    icon.classList.remove('bi-clipboard-check');
+                    icon.classList.add('bi-clipboard');
+                }, 1500);
+            });
+        });
     });
     
     // Biến lưu trữ danh sách profiles
@@ -270,7 +345,6 @@
                             <th>Tên</th>
                             <th>App ID</th>
                             <th>Tài khoản</th>
-                            <th>Mật khẩu</th>
                             <th>Thao tác</th>
                         </tr>
                     </thead>
@@ -283,12 +357,21 @@
                     <td><input type="checkbox" class="profile-select" checked data-index="${index}"></td>
                     <td>${profile.Name || 'N/A'}</td>
                     <td>${profile.AppID || 'N/A'}</td>
-                    <td style="font-family: monospace;">${profile.AnonymousLogin ? 'Ẩn danh' : (profile.SteamUsername || 'N/A')}</td>
-                    <td>${profile.AnonymousLogin ? 'Ẩn danh' : (profile.SteamPassword ? '********' : 'N/A')}</td>
                     <td>
-                        <button class="btn btn-sm btn-primary add-btn" data-index="${index}">
-                            <i class="bi bi-plus-circle me-1"></i> Thêm
-                        </button>
+                        ${profile.AnonymousLogin ? 
+                            '<span class="badge bg-secondary">Ẩn danh</span>' : 
+                            '<button class="btn btn-sm btn-outline-info view-account-btn" data-index="' + index + '"><i class="bi bi-key me-1"></i>Xem thông tin</button>'
+                        }
+                    </td>
+                    <td>
+                        <div class="btn-group">
+                            <button class="btn btn-sm btn-primary add-btn" data-index="${index}">
+                                <i class="bi bi-plus-circle me-1"></i> Thêm
+                            </button>
+                            <button class="btn btn-sm btn-info copy-app-btn" data-index="${index}" title="Sao chép qua Game App Profile">
+                                <i class="bi bi-arrow-right-circle"></i>
+                            </button>
+                        </div>
                     </td>
                 </tr>
             `;
@@ -322,6 +405,20 @@
             });
         });
         
+        document.querySelectorAll('.view-account-btn').forEach(button => {
+            button.addEventListener('click', function() {
+                const index = parseInt(this.getAttribute('data-index'));
+                showAccountDetails(profiles[index]);
+            });
+        });
+        
+        document.querySelectorAll('.copy-app-btn').forEach(button => {
+            button.addEventListener('click', function() {
+                const index = parseInt(this.getAttribute('data-index'));
+                copyToAppProfile(profiles[index]);
+            });
+        });
+        
         updateImportButton();
     }
     
@@ -333,6 +430,31 @@
         const importBtn = document.getElementById('importAllBtn');
         importBtn.innerHTML = `<i class="bi bi-plus-circle me-1"></i> Import ${count} Profile${count !== 1 ? 's' : ''}`;
         importBtn.disabled = count === 0;
+    }
+    
+    // Hiển thị thông tin tài khoản
+    function showAccountDetails(profile) {
+        if (!profile) return;
+        
+        document.getElementById('accountDetailsModalLabel').textContent = `Thông tin tài khoản: ${profile.Name}`;
+        document.getElementById('accountUsername').value = profile.SteamUsername || '';
+        document.getElementById('accountPassword').value = profile.SteamPassword || '';
+        document.getElementById('accountPassword').type = 'password';
+        
+        const icon = document.querySelector('#togglePassword i');
+        icon.classList.remove('bi-eye-slash');
+        icon.classList.add('bi-eye');
+        
+        const modal = new bootstrap.Modal(document.getElementById('accountDetailsModal'));
+        modal.show();
+    }
+    
+    // Chuyển profile sang Game App Profiles
+    function copyToAppProfile(profile) {
+        if (!profile) return;
+        
+        // Chuyển hướng đến trang Game App Profiles
+        window.location.href = `/AppProfiles?copyProfile=${encodeURIComponent(JSON.stringify(profile))}`;
     }
     
     // Thêm một profile
@@ -454,6 +576,10 @@
     
     #uploadArea:hover {
         background-color: rgba(102, 192, 244, 0.1);
+    }
+    
+    .btn-group .btn {
+        margin-right: 2px;
     }
 </style>
 }
