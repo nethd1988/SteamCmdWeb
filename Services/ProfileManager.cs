@@ -183,6 +183,14 @@ namespace SteamCmdWeb.Services
             if (string.IsNullOrEmpty(cipherText)) return "";
             try
             {
+                // Kiểm tra xem chuỗi có phải là chuỗi mã hóa Base64 hợp lệ không
+                try {
+                    Convert.FromBase64String(cipherText);
+                } catch {
+                    // Nếu không phải Base64 hợp lệ, trả về chuỗi gốc
+                    return cipherText;
+                }
+                
                 byte[] cipherBytes = Convert.FromBase64String(cipherText);
                 using (Aes encryptor = Aes.Create())
                 {
@@ -193,16 +201,22 @@ namespace SteamCmdWeb.Services
                     {
                         using (CryptoStream cs = new CryptoStream(ms, encryptor.CreateDecryptor(), CryptoStreamMode.Write))
                         {
-                            cs.Write(cipherBytes, 0, cipherBytes.Length);
-                            cs.Close();
+                            try {
+                                cs.Write(cipherBytes, 0, cipherBytes.Length);
+                                cs.Close();
+                                return Encoding.Unicode.GetString(ms.ToArray());
+                            } catch {
+                                // Nếu xảy ra lỗi khi giải mã, trả về chuỗi gốc
+                                return cipherText;
+                            }
                         }
-                        return Encoding.Unicode.GetString(ms.ToArray());
                     }
                 }
             }
             catch
             {
-                return "[Không thể giải mã]";
+                // Trả về chuỗi gốc nếu không thể giải mã
+                return cipherText;
             }
         }
     }

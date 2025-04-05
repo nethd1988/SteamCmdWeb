@@ -110,9 +110,9 @@ namespace SteamCmdWeb.Controllers
             if (profile == null)
                 return NotFound("App Profile not found");
 
-            // Chỉ cho phép truy cập từ localhost
-            if (!Request.Host.Host.Equals("localhost") && !Request.Host.Host.Equals("127.0.0.1"))
-                return Forbid("This operation is only allowed from localhost");
+            // Bỏ kiểm tra localhost để cho phép truy cập từ bất kỳ đâu
+            // if (!Request.Host.Host.Equals("localhost") && !Request.Host.Host.Equals("127.0.0.1"))
+            //    return Forbid("This operation is only allowed from localhost");
 
             var credentials = new
             {
