@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
-using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using SteamCmdWeb.Models;
 
@@ -28,7 +27,7 @@ namespace SteamCmdWeb.Services
             }
         }
 
-        public async Task<(int, int)> MigrateProfilesToAppProfiles(List<ClientProfile> profiles, bool skipDuplicateCheck = false)
+        public async Task<(int Added, int Skipped)> MigrateProfilesToAppProfiles(List<ClientProfile> profiles, bool skipDuplicateCheck = false)
         {
             int added = 0;
             int skipped = 0;
@@ -60,16 +59,16 @@ namespace SteamCmdWeb.Services
 
                     // Check if profile already exists (by ID or by name)
                     bool exists = existingProfiles.Any(p => p.Id == profile.Id ||
-                                                        (p.Name == profile.Name && p.AppID == profile.AppID));
+                                                          (p.Name == profile.Name && p.AppID == profile.AppID));
 
                     // Check for duplicate credentials (same username and password)
                     bool hasDuplicateCredentials = false;
                     if (!skipDuplicateCheck && !string.IsNullOrEmpty(profile.SteamUsername))
                     {
                         // Kiểm tra username trong hệ thống
-                        hasDuplicateCredentials = existingProfiles.Any(p =>
+                        hasDuplicateCredentials = existingProfiles.Any(p => 
                             p.SteamUsername == profile.SteamUsername);
-
+                        
                         // Kiểm tra username trong danh sách đã xử lý
                         if (!hasDuplicateCredentials && processedUserNames.Contains(profile.SteamUsername))
                         {
@@ -150,12 +149,6 @@ namespace SteamCmdWeb.Services
         {
             try
             {
-                if (!Directory.Exists(_backupFolder))
-                {
-                    Directory.CreateDirectory(_backupFolder);
-                    return new List<BackupInfo>();
-                }
-
                 var backupFiles = new DirectoryInfo(_backupFolder)
                     .GetFiles("*.json")
                     .OrderByDescending(f => f.CreationTime)
