@@ -113,7 +113,7 @@ namespace SteamCmdWeb.Controllers
         }
 
         [HttpPost("migrate")]
-        public async Task<IActionResult> MigrateToAppProfiles([FromBody] List<ClientProfile> profiles)
+        public async Task<IActionResult> MigrateToAppProfiles([FromBody] List<ClientProfile> profiles, [FromQuery] bool skipDuplicateCheck = false)
         {
             try
             {
@@ -122,7 +122,7 @@ namespace SteamCmdWeb.Controllers
                     return BadRequest(new { Success = false, Message = "Không có profiles nào để di chuyển" });
                 }
 
-                var (added, skipped) = await _migrationService.MigrateProfilesToAppProfiles(profiles);
+                var (added, skipped) = await _migrationService.MigrateProfilesToAppProfiles(profiles, skipDuplicateCheck);
                 
                 _logger.LogInformation("Migrated profiles to App Profiles: Added {Added}, Skipped {Skipped}", added, skipped);
                 

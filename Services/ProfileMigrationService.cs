@@ -18,7 +18,7 @@ namespace SteamCmdWeb.Services
         {
             _logger = logger;
             _appProfileManager = appProfileManager;
-            
+
             _backupFolder = Path.Combine(Directory.GetCurrentDirectory(), "Data", "Backup");
             if (!Directory.Exists(_backupFolder))
             {
@@ -27,7 +27,7 @@ namespace SteamCmdWeb.Services
             }
         }
 
-        public async Task<(int Added, int Skipped)> MigrateProfilesToAppProfiles(List<ClientProfile> profiles)
+        public async Task<(int Added, int Skipped)> MigrateProfilesToAppProfiles(List<ClientProfile> profiles, bool skipDuplicateCheck = false)
         {
             int added = 0;
             int skipped = 0;
@@ -50,17 +50,17 @@ namespace SteamCmdWeb.Services
 
                     // Check for duplicate credentials (same username and password)
                     bool hasDuplicateCredentials = false;
-                    if (!string.IsNullOrEmpty(profile.SteamUsername) && !string.IsNullOrEmpty(profile.SteamPassword))
+                    if (!skipDuplicateCheck && !string.IsNullOrEmpty(profile.SteamUsername) && !string.IsNullOrEmpty(profile.SteamPassword))
                     {
-                        hasDuplicateCredentials = existingProfiles.Any(p => 
-                            p.SteamUsername == profile.SteamUsername && 
+                        hasDuplicateCredentials = existingProfiles.Any(p =>
+                            p.SteamUsername == profile.SteamUsername &&
                             p.SteamPassword == profile.SteamPassword);
                     }
 
-                    // If the profile exists but credentials don't, add it anyway as requested
+                    // If the profile exists but credentials don't, add it anyway
                     if (exists && hasDuplicateCredentials)
                     {
-                        _logger.LogInformation("Skipping profile {Name} (ID: {Id}) - duplicate credentials", 
+                        _logger.LogInformation("Skipping profile {Name} (ID: {Id}) - duplicate credentials",
                             profile.Name, profile.Id);
                         skipped++;
                     }
@@ -72,17 +72,17 @@ namespace SteamCmdWeb.Services
                             // If game is duplicate but credentials aren't, assign new ID
                             profile.Id = 0; // AppProfileManager will assign a new ID
                         }
-                        
+
                         _appProfileManager.AddProfile(profile);
                         added++;
-                        
-                        _logger.LogInformation("Added profile {Name} (ID: {Id}) to AppProfiles", 
+
+                        _logger.LogInformation("Added profile {Name} (ID: {Id}) to AppProfiles",
                             profile.Name, profile.Id);
                     }
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Error adding profile {Name} (ID: {Id}) to AppProfiles", 
+                    _logger.LogError(ex, "Error adding profile {Name} (ID: {Id}) to AppProfiles",
                         profile.Name, profile.Id);
                     skipped++;
                 }
@@ -90,7 +90,7 @@ namespace SteamCmdWeb.Services
 
             return (added, skipped);
         }
-        
+
         public async Task<string> BackupClientProfiles(List<ClientProfile> profiles)
         {
             try
@@ -99,18 +99,18 @@ namespace SteamCmdWeb.Services
                 {
                     return "No profiles to backup";
                 }
-                
+
                 string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
                 string fileName = $"client_backup_{timestamp}.json";
                 string filePath = Path.Combine(_backupFolder, fileName);
-                
+
                 var options = new JsonSerializerOptions { WriteIndented = true };
                 string jsonContent = JsonSerializer.Serialize(profiles, options);
-                
+
                 await File.WriteAllTextAsync(filePath, jsonContent);
-                
+
                 _logger.LogInformation("Backed up {Count} profiles to {FilePath}", profiles.Count, filePath);
-                
+
                 return $"Successfully backed up {profiles.Count} profiles to {fileName}";
             }
             catch (Exception ex)
@@ -119,7 +119,7 @@ namespace SteamCmdWeb.Services
                 return $"Error backing up profiles: {ex.Message}";
             }
         }
-        
+
         public List<BackupInfo> GetBackupFiles()
         {
             try
@@ -136,7 +136,7 @@ namespace SteamCmdWeb.Services
                         FullPath = f.FullName
                     })
                     .ToList();
-                
+
                 return backupFiles;
             }
             catch (Exception ex)
@@ -145,27 +145,27 @@ namespace SteamCmdWeb.Services
                 return new List<BackupInfo>();
             }
         }
-        
+
         public async Task<List<ClientProfile>> LoadProfilesFromBackup(string fileName)
         {
             try
             {
                 string filePath = Path.Combine(_backupFolder, fileName);
-                
+
                 if (!File.Exists(filePath))
                 {
                     _logger.LogWarning("Backup file not found: {FilePath}", filePath);
                     return new List<ClientProfile>();
                 }
-                
+
                 string jsonContent = await File.ReadAllTextAsync(filePath);
                 var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-                
+
                 var profiles = JsonSerializer.Deserialize<List<ClientProfile>>(jsonContent, options);
-                
-                _logger.LogInformation("Loaded {Count} profiles from backup file {FileName}", 
+
+                _logger.LogInformation("Loaded {Count} profiles from backup file {FileName}",
                     profiles?.Count ?? 0, fileName);
-                
+
                 return profiles ?? new List<ClientProfile>();
             }
             catch (Exception ex)
@@ -175,7 +175,7 @@ namespace SteamCmdWeb.Services
             }
         }
     }
-    
+
     public class BackupInfo
     {
         public string FileName { get; set; }

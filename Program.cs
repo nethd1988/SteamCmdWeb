@@ -21,6 +21,9 @@ builder.Services.AddRazorPages();
 builder.Services.AddSingleton<AppProfileManager>();
 builder.Services.AddHostedService<TcpServerService>();
 
+// Thêm ProfileMigrationService
+builder.Services.AddSingleton<ProfileMigrationService>();
+
 // Thêm SilentSyncService
 builder.Services.AddSingleton<SilentSyncService>();
 

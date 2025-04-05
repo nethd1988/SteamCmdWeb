@@ -8,5 +8,13 @@ git remote add origin https://github.com/nethd1988/SteamCmdWebAPI.git
 
 
 git add .
-git commit -m "thay doi ji go vao day"
+git commit -m "GALUOCDONE"
 git push origin master
+
+
+
+
+QUAY LẠI ĐIỂM CẦN VỀ
+git reset --hard xxxx
+
+git pust origin HEAD --FORCE
