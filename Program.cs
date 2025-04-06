@@ -1,74 +1,71 @@
-using SteamCmdWeb.Services;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using SteamCmdWeb;
-using System.IO;
-using System.Text.Json.Serialization;
-using System.Text.Json;
+using SteamCmdWeb.Services;
 using System;
+using System.IO;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
+// Namespace của MiddlewareExtensions đã được định nghĩa trong SteamCmdWeb
+// Không cần thêm using bổ sung nếu MiddlewareExtensions nằm trong cùng namespace
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Thêm các dịch vụ
+// **Thêm các dịch vụ**
 builder.Services.AddControllers()
-    .AddJsonOptions(options => {
+    .AddJsonOptions(options =>
+    {
         options.JsonSerializerOptions.WriteIndented = true;
         options.JsonSerializerOptions.PropertyNameCaseInsensitive = true;
         options.JsonSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
         options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
-        // Đảm bảo không xảy ra vấn đề với tham chiếu vòng tròn
         options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
     });
 
 builder.Services.AddRazorPages();
 
-// Đăng ký các Service theo thứ tự phụ thuộc
+// **Cấu hình Authentication với Cookie**
+builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
+    .AddCookie(options =>
+    {
+        options.LoginPath = "/Login";
+        options.AccessDeniedPath = "/AccessDenied";
+        options.ExpireTimeSpan = TimeSpan.FromMinutes(30);
+    });
+
+// **Đăng ký các dịch vụ tùy chỉnh**
 builder.Services.AddSingleton<DecryptionService>();
 builder.Services.AddSingleton<AppProfileManager>();
 builder.Services.AddSingleton<ProfileMigrationService>();
 builder.Services.AddSingleton<SilentSyncService>();
-
-// Đăng ký dịch vụ giám sát hệ thống
 builder.Services.AddSingleton<SystemMonitoringService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<SystemMonitoringService>());
-
-// Đăng ký dịch vụ TCP server
 builder.Services.AddHostedService<TcpServerService>();
 
-// Tăng kích thước tối đa cho request body và response streaming
-builder.WebHost.ConfigureKestrel(serverOptions =>
-{
-    serverOptions.Limits.MaxRequestBodySize = 50 * 1024 * 1024; // 50MB
-    serverOptions.Limits.MaxRequestHeadersTotalSize = 32 * 1024; // 32KB
-    serverOptions.Limits.KeepAliveTimeout = TimeSpan.FromMinutes(10); // Tăng timeout cho kết nối kéo dài
-    serverOptions.Limits.RequestHeadersTimeout = TimeSpan.FromMinutes(2); // Thời gian chờ headers
-});
-
-// Thêm CORS policy
+// **Thêm CORS policy**
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowAll",
-        builder => builder
-            .AllowAnyOrigin()
-            .AllowAnyMethod()
-            .AllowAnyHeader());
+    options.AddPolicy("AllowAll", builder => builder
+        .AllowAnyOrigin()
+        .AllowAnyMethod()
+        .AllowAnyHeader());
 });
 
-// Cấu hình logging với bộ lọc
+// **Cấu hình logging**
 builder.Logging.AddConsole();
 builder.Logging.AddDebug();
 builder.Logging.AddEventLog();
-
-// Lọc bớt logs để tránh spam
 builder.Logging.AddFilter("Microsoft", LogLevel.Warning);
 builder.Logging.AddFilter("System", LogLevel.Warning);
 builder.Logging.AddFilter("SteamCmdWeb", LogLevel.Information);
 
 var app = builder.Build();
 
-// Cấu hình pipeline HTTP
+// **Cấu hình pipeline HTTP**
 if (app.Environment.IsDevelopment())
 {
     app.UseDeveloperExceptionPage();
@@ -83,17 +80,17 @@ app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseRouting();
 app.UseCors("AllowAll");
+app.UseAuthentication();
 app.UseAuthorization();
 
-// Đăng ký middleware tùy chỉnh
-app.UseSilentSyncMiddleware();
-app.UseRemoteRequestLogging();
+// **Sử dụng middleware tùy chỉnh**
+app.UseSilentSyncMiddleware(); // Middleware xử lý yêu cầu POST đến /api/silentsync
+app.UseRemoteRequestLogging(); // Middleware ghi log các yêu cầu từ xa
 
-// Map endpoints
 app.MapControllers();
 app.MapRazorPages();
 
-// Tạo thư mục Data và các thư mục con nếu chưa tồn tại
+// **Tạo các thư mục cần thiết**
 var paths = new[]
 {
     Path.Combine(app.Environment.ContentRootPath, "Data"),
@@ -114,7 +111,6 @@ foreach (var path in paths)
     }
 }
 
-// Kiểm tra và tạo file profiles.json nếu chưa tồn tại
 var profilesFilePath = Path.Combine(paths[0], "profiles.json");
 if (!File.Exists(profilesFilePath))
 {
@@ -122,7 +118,7 @@ if (!File.Exists(profilesFilePath))
     app.Logger.LogInformation("Đã tạo file profiles.json trống tại: {FilePath}", profilesFilePath);
 }
 
-// Thêm xử lý lỗi tổng quát
+// **Xử lý lỗi tổng quát**
 app.Use(async (context, next) =>
 {
     try
@@ -132,27 +128,15 @@ app.Use(async (context, next) =>
     catch (Exception ex)
     {
         app.Logger.LogError(ex, "Lỗi không xử lý trong pipeline HTTP: {Message}", ex.Message);
-
         if (!context.Response.HasStarted)
         {
             context.Response.StatusCode = 500;
             context.Response.ContentType = "application/json";
-
-            var error = new
-            {
-                Error = "Lỗi server",
-                Message = "Đã xảy ra lỗi khi xử lý yêu cầu. Vui lòng thử lại sau."
-            };
-
+            var error = new { Error = "Lỗi server", Message = "Đã xảy ra lỗi khi xử lý yêu cầu." };
             await context.Response.WriteAsJsonAsync(error);
         }
     }
 });
 
-// Ghi log khởi động
-var logger = app.Services.GetRequiredService<ILogger<Program>>();
-logger.LogInformation("SteamCmdWeb Server đã khởi động. Sẵn sàng nhận silent sync từ clients.");
-logger.LogInformation("Ứng dụng đang chạy tại {Url}", app.Configuration["Kestrel:Endpoints:Http:Url"] ?? "http://localhost:5000");
-
-// Chạy ứng dụng
+app.Logger.LogInformation("SteamCmdWeb Server đã khởi động.");
 app.Run();

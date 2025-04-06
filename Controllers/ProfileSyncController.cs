@@ -29,9 +29,6 @@ namespace SteamCmdWeb.Controllers
             _silentSyncService = silentSyncService ?? throw new ArgumentNullException(nameof(silentSyncService));
         }
 
-        /// <summary>
-        /// Nhận một profile từ client và lưu vào hệ thống
-        /// </summary>
         [HttpPost("receive")]
         public async Task<IActionResult> ReceiveProfile([FromBody] ClientProfile profile)
         {
@@ -44,7 +41,6 @@ namespace SteamCmdWeb.Controllers
                 }
 
                 _logger.LogInformation("Received profile: {Name} (ID: {Id})", profile.Name, profile.Id);
-
                 string clientIp = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
 
                 (bool success, string message) = await _silentSyncService.ReceiveProfileAsync(profile, clientIp);
@@ -53,10 +49,7 @@ namespace SteamCmdWeb.Controllers
                 {
                     return Ok(new { Success = true, Message = "Profile added successfully", ProfileId = profile.Id });
                 }
-                else
-                {
-                    return StatusCode(500, new { Success = false, Message = message });
-                }
+                return StatusCode(500, new { Success = false, Message = message });
             }
             catch (Exception ex)
             {
@@ -65,9 +58,6 @@ namespace SteamCmdWeb.Controllers
             }
         }
 
-        /// <summary>
-        /// Nhận nhiều profile cùng lúc từ client
-        /// </summary>
         [HttpPost("batch")]
         public async Task<IActionResult> ReceiveProfiles([FromBody] List<ClientProfile> profiles)
         {
@@ -84,7 +74,6 @@ namespace SteamCmdWeb.Controllers
                 }
 
                 _logger.LogInformation("Received batch of {Count} profiles", profiles.Count);
-
                 string clientIp = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
 
                 (bool success, string message, int addedCount, int updatedCount, int errorCount, List<int> processedIds) =
@@ -102,17 +91,14 @@ namespace SteamCmdWeb.Controllers
                         Errors = errorCount
                     });
                 }
-                else
+                return StatusCode(500, new
                 {
-                    return StatusCode(500, new
-                    {
-                        Success = false,
-                        Message = message,
-                        Added = addedCount,
-                        Updated = updatedCount,
-                        Errors = errorCount
-                    });
-                }
+                    Success = false,
+                    Message = message,
+                    Added = addedCount,
+                    Updated = updatedCount,
+                    Errors = errorCount
+                });
             }
             catch (Exception ex)
             {
@@ -121,9 +107,6 @@ namespace SteamCmdWeb.Controllers
             }
         }
 
-        /// <summary>
-        /// Đồng bộ hóa toàn bộ profile từ client đến server
-        /// </summary>
         [HttpPost("sync")]
         public async Task<IActionResult> SyncProfiles([FromBody] List<ClientProfile> profiles, [FromQuery] string clientId = null)
         {
@@ -139,7 +122,6 @@ namespace SteamCmdWeb.Controllers
                 clientId = clientId ?? clientIp ?? "unknown";
 
                 _logger.LogInformation("Starting profile sync from client {ClientId}. Profile count: {Count}", clientId, profiles.Count);
-
                 string jsonProfiles = JsonSerializer.Serialize(profiles);
 
                 (bool success, string message, int totalCount, int addedCount, int updatedCount, int errorCount) =
@@ -152,74 +134,19 @@ namespace SteamCmdWeb.Controllers
                         Success = true,
                         SyncId = Guid.NewGuid().ToString().Substring(0, 8),
                         Message = message,
-                        Details = new
-                        {
-                            Added = addedCount,
-                            Updated = updatedCount,
-                            Errors = errorCount,
-                            Total = totalCount,
-                            Timestamp = DateTime.Now
-                        }
+                        Details = new { Added = addedCount, Updated = updatedCount, Errors = errorCount, Total = totalCount, Timestamp = DateTime.Now }
                     });
                 }
-                else
+                return StatusCode(500, new
                 {
-                    return StatusCode(500, new
-                    {
-                        Success = false,
-                        Message = message,
-                        Details = new
-                        {
-                            Added = addedCount,
-                            Updated = updatedCount,
-                            Errors = errorCount,
-                            Total = totalCount
-                        }
-                    });
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error during profile sync");
-                return StatusCode(500, new { Success = false, Message = $"Sync failed: {ex.Message}" });
-            }
-        }
-
-        /// <summary>
-        /// Nhận thông tin về các profile từ một server từ xa
-        /// </summary>
-        [HttpGet("sync")]
-        public IActionResult SyncFromRemoteServer(
-            [FromQuery] string targetServer,
-            [FromQuery] int port = 61188,
-            [FromQuery] bool force = false)
-        {
-            try
-            {
-                if (string.IsNullOrEmpty(targetServer))
-                {
-                    return BadRequest("Target server address is required");
-                }
-
-                _logger.LogInformation("Initiating sync from remote server: {Server}:{Port}", targetServer, port);
-
-                // TODO: Thêm logic thực tế để kết nối TCP với server từ xa
-                return Ok(new
-                {
-                    Success = true,
-                    Message = $"Sync from {targetServer}:{port} requested. Implementation in progress.",
-                    Details = new
-                    {
-                        TargetServer = targetServer,
-                        Port = port,
-                        Force = force,
-                        Status = "Pending"
-                    }
+                    Success = false,
+                    Message = message,
+                    Details = new { Added = addedCount, Updated = updatedCount, Errors = errorCount, Total = totalCount }
                 });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error syncing from remote server {Server}:{Port}", targetServer, port);
+                _logger.LogError(ex, "Error during profile sync");
                 return StatusCode(500, new { Success = false, Message = $"Sync failed: {ex.Message}" });
             }
         }

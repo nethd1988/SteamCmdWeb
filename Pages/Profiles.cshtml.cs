@@ -15,14 +15,15 @@ namespace SteamCmdWeb.Pages
 
         public ProfilesModel(AppProfileManager profileManager, ILogger<ProfilesModel> logger)
         {
-            _profileManager = profileManager;
-            _logger = logger;
+            _profileManager = profileManager ?? throw new ArgumentNullException(nameof(profileManager));
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
         public void OnGet()
         {
             _logger.LogInformation("Trang Profiles được yêu cầu");
-            // Không lấy dữ liệu ở đây vì chúng ta sẽ sử dụng JavaScript để tải dữ liệu từ API
+            // Dữ liệu sẽ được tải thông qua JavaScript từ API '/api/appprofiles'.
+            // Không cần lấy dữ liệu trực tiếp trong phương thức này.
         }
     }
 }

@@ -1,7 +1,6 @@
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using SteamCmdWeb.Services;
 using System;
-using System.Diagnostics;
 using System.Linq;
 using System.Net.NetworkInformation;
 
@@ -18,19 +17,14 @@ namespace SteamCmdWeb.Pages
 
         public IndexModel(AppProfileManager profileManager)
         {
-            _profileManager = profileManager;
+            _profileManager = profileManager ?? throw new ArgumentNullException(nameof(profileManager));
         }
 
         public void OnGet()
         {
-            // Kiểm tra xem TCP server có đang chạy không
             IsServerRunning = IsPortListening(61188);
-            
-            // Tính thời gian uptime
             TimeSpan uptime = DateTime.Now - _serverStartTime;
             Uptime = FormatUptime(uptime);
-            
-            // Định dạng thời gian bắt đầu
             StartTime = _serverStartTime.ToString("dd/MM/yyyy HH:mm:ss");
         }
 
@@ -40,10 +34,9 @@ namespace SteamCmdWeb.Pages
             {
                 IPGlobalProperties ipProperties = IPGlobalProperties.GetIPGlobalProperties();
                 var tcpListeners = ipProperties.GetActiveTcpListeners();
-                
                 return tcpListeners.Any(endpoint => endpoint.Port == port);
             }
-            catch
+            catch (Exception)
             {
                 return false;
             }
@@ -55,17 +48,17 @@ namespace SteamCmdWeb.Pages
             {
                 return $"{(int)timeSpan.TotalDays} ngày, {timeSpan.Hours} giờ, {timeSpan.Minutes} phút";
             }
-            
+
             if (timeSpan.TotalHours >= 1)
             {
                 return $"{(int)timeSpan.TotalHours} giờ, {timeSpan.Minutes} phút";
             }
-            
+
             if (timeSpan.TotalMinutes >= 1)
             {
                 return $"{(int)timeSpan.TotalMinutes} phút, {timeSpan.Seconds} giây";
             }
-            
+
             return $"{timeSpan.Seconds} giây";
         }
     }

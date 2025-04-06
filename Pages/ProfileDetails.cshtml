@@ -1,226 +1,53 @@
-@page "{id:int}"
-@model SteamCmdWeb.Pages.ProfileDetailsModel
+@page
+@model SteamCmdWeb.Pages.ProfilesModel
 @{
-    ViewData["Title"] = $"Chi tiết Profile: {Model.Profile?.Name ?? "Không tìm thấy"}";
+    ViewData["Title"] = "Danh sách Profile";
 }
 
-@if (Model.Profile == null)
-{
-    <div class="alert alert-danger" role="alert">
-        <i class="bi bi-exclamation-triangle-fill me-2"></i>
-        <strong>Lỗi:</strong> Không tìm thấy profile với ID @RouteData.Values["id"]
-    </div>
-    
-    <div class="d-flex justify-content-center mt-4">
-        <a href="/Profiles" class="btn btn-primary">
-            <i class="bi bi-arrow-left me-2"></i>
-            Quay lại danh sách profiles
-        </a>
-    </div>
-    
-    return;
-}
-
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <nav aria-label="breadcrumb">
-        <ol class="breadcrumb">
-            <li class="breadcrumb-item"><a href="/">Trang chủ</a></li>
-            <li class="breadcrumb-item"><a href="/Profiles">Profiles</a></li>
-            <li class="breadcrumb-item active" aria-current="page">@Model.Profile.Name</li>
-        </ol>
-    </nav>
-    
-    <div class="btn-group">
-        <a href="/AppProfiles?edit=@Model.Profile.Id" class="btn btn-primary">
-            <i class="bi bi-pencil me-1"></i> Chỉnh sửa
-        </a>
-        <button type="button" class="btn btn-outline-primary" id="copyProfileBtn">
-            <i class="bi bi-clipboard me-1"></i> Sao chép
-        </button>
-    </div>
-</div>
-
-<div class="row">
-    <div class="col-md-8">
-        <div class="card mb-4">
-            <div class="card-header">
-                <h5 class="mb-0">
-                    <i class="bi bi-controller me-2"></i>
-                    @Model.Profile.Name
-                </h5>
-            </div>
-            <div class="card-body">
-                <div class="row mb-4">
-                    <div class="col-md-6">
-                        <h6 class="mb-3 text-primary">Thông tin chung</h6>
-                        <div class="mb-3">
-                            <label class="form-label text-muted mb-1">ID</label>
-                            <p class="fs-5">@Model.Profile.Id</p>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label text-muted mb-1">App ID</label>
-                            <p class="fs-5">@Model.Profile.AppID</p>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label text-muted mb-1">Trạng thái</label>
-                            <p class="fs-5">
-                                @if (Model.Profile.Status == "Running")
-                                {
-                                    <span class="badge bg-success">Đang chạy</span>
-                                }
-                                else if (Model.Profile.Status == "Ready")
-                                {
-                                    <span class="badge bg-primary">Sẵn sàng</span>
-                                }
-                                else if (Model.Profile.Status == "Stopped")
-                                {
-                                    <span class="badge bg-secondary">Đã dừng</span>
-                                }
-                                else
-                                {
-                                    <span class="badge bg-info">@Model.Profile.Status</span>
-                                }
-                            </p>
-                        </div>
-                    </div>
-                    <div class="col-md-6">
-                        <h6 class="mb-3 text-primary">Cài đặt</h6>
-                        <div class="mb-3">
-                            <label class="form-label text-muted mb-1">Tự động chạy</label>
-                            <p class="fs-5">
-                                @if (Model.Profile.AutoRun)
-                                {
-                                    <span class="badge bg-success">Có</span>
-                                }
-                                else
-                                {
-                                    <span class="badge bg-secondary">Không</span>
-                                }
-                            </p>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label text-muted mb-1">Xác thực files</label>
-                            <p class="fs-5">
-                                @if (Model.Profile.ValidateFiles)
-                                {
-                                    <span class="badge bg-success">Có</span>
-                                }
-                                else
-                                {
-                                    <span class="badge bg-secondary">Không</span>
-                                }
-                            </p>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label text-muted mb-1">Đăng nhập ẩn danh</label>
-                            <p class="fs-5">
-                                @if (Model.Profile.AnonymousLogin)
-                                {
-                                    <span class="badge bg-success">Có</span>
-                                }
-                                else
-                                {
-                                    <span class="badge bg-secondary">Không</span>
-                                }
-                            </p>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="mb-4">
-                    <h6 class="mb-3 text-primary">Đường dẫn cài đặt</h6>
-                    <div class="input-group">
-                        <input type="text" class="form-control bg-dark text-white" value="@Model.Profile.InstallDirectory" readonly id="installPath">
-                        <button class="btn btn-outline-secondary" type="button" id="copyPathBtn">
-                            <i class="bi bi-clipboard"></i>
-                        </button>
-                    </div>
-                </div>
-                
-                @if (!string.IsNullOrEmpty(Model.Profile.Arguments))
-                {
-                    <div class="mb-4">
-                        <h6 class="mb-3 text-primary">Tham số bổ sung</h6>
-                        <div class="input-group">
-                            <input type="text" class="form-control bg-dark text-white" value="@Model.Profile.Arguments" readonly id="arguments">
-                            <button class="btn btn-outline-secondary" type="button" id="copyArgsBtn">
-                                <i class="bi bi-clipboard"></i>
-                            </button>
-                        </div>
-                    </div>
-                }
-                
-                @if (!Model.Profile.AnonymousLogin)
-                {
-                    <div class="mb-4">
-                        <h6 class="mb-3 text-primary">Tài khoản</h6>
-                        <div class="alert alert-info">
-                            <i class="bi bi-info-circle-fill me-2"></i>
-                            Thông tin tài khoản đã được mã hóa để bảo mật.
-                        </div>
-                    </div>
-                }
-            </div>
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">
+            <i class="bi bi-list-check me-2"></i>
+            Danh sách Profile Game
+        </h5>
+        <div>
+            <button id="refreshBtn" class="btn btn-outline-primary btn-sm me-2">
+                <i class="bi bi-arrow-clockwise me-1"></i> Làm mới
+            </button>
+            <a href="/AppProfiles" class="btn btn-primary btn-sm">
+                <i class="bi bi-grid-3x3-gap me-1"></i> Xem dạng lưới
+            </a>
         </div>
     </div>
-    
-    <div class="col-md-4">
-        <div class="card mb-4">
-            <div class="card-header">
-                <h5 class="mb-0">
-                    <i class="bi bi-clock-history me-2"></i>
-                    Lịch sử hoạt động
-                </h5>
-            </div>
-            <div class="card-body">
-                <div class="mb-3">
-                    <label class="form-label text-muted mb-1">Chạy lần cuối</label>
-                    <p class="fs-5">@Model.Profile.LastRun.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss")</p>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label text-muted mb-1">Thời gian bắt đầu</label>
-                    <p class="fs-5">@Model.Profile.StartTime.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss")</p>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label text-muted mb-1">Thời gian dừng</label>
-                    <p class="fs-5">@Model.Profile.StopTime.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss")</p>
-                </div>
-                
-                @if (Model.Profile.Pid > 0)
-                {
-                    <div class="mb-3">
-                        <label class="form-label text-muted mb-1">Process ID</label>
-                        <p class="fs-5">@Model.Profile.Pid</p>
-                    </div>
-                }
-            </div>
-        </div>
-        
-        <div class="card">
-            <div class="card-header">
-                <h5 class="mb-0">
-                    <i class="bi bi-gear me-2"></i>
-                    Thao tác
-                </h5>
-            </div>
-            <div class="card-body">
-                <div class="d-grid gap-2">
-                    <a href="/AppProfiles?edit=@Model.Profile.Id" class="btn btn-primary">
-                        <i class="bi bi-pencil me-2"></i>Chỉnh sửa
-                    </a>
-                    <button type="button" class="btn btn-outline-danger" id="deleteBtn">
-                        <i class="bi bi-trash me-2"></i>Xóa
-                    </button>
-                    <button type="button" class="btn btn-outline-primary" id="duplicateBtn">
-                        <i class="bi bi-files me-2"></i>Tạo bản sao
-                    </button>
-                </div>
-            </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover" id="profilesTable">
+                <thead>
+                    <tr>
+                        <th style="width: 50px;">#</th>
+                        <th>Tên Game</th>
+                        <th>App ID</th>
+                        <th>Đường dẫn</th>
+                        <th style="width: 120px;">Trạng thái</th>
+                        <th style="width: 150px;">Chạy lần cuối</th>
+                        <th style="width: 120px;">Thao tác</th>
+                    </tr>
+                </thead>
+                <tbody id="profilesList">
+                    <tr>
+                        <td colspan="7" class="text-center">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Đang tải...</span>
+                            </div>
+                            <p class="mt-2">Đang tải danh sách profile...</p>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
         </div>
     </div>
 </div>
 
-<!-- Modal xác nhận xóa -->
 <div class="modal fade" id="deleteConfirmModal" tabindex="-1" aria-labelledby="deleteConfirmModalLabel" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content bg-dark">
@@ -229,7 +56,7 @@
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <p>Bạn có chắc chắn muốn xóa game profile "<span id="deleteGameName">@Model.Profile.Name</span>"?</p>
+                <p>Bạn có chắc chắn muốn xóa game profile "<span id="deleteGameName"></span>"?</p>
                 <p class="text-danger">Lưu ý: Hành động này không thể hoàn tác!</p>
             </div>
             <div class="modal-footer">
@@ -240,233 +67,245 @@
     </div>
 </div>
 
+<div class="modal fade" id="detailsModal" tabindex="-1" aria-labelledby="detailsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content bg-dark">
+            <div class="modal-header">
+                <h5 class="modal-title" id="detailsModalLabel">Chi tiết Profile</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <h6>Thông tin chung</h6>
+                            <table class="table table-sm table-dark mb-0">
+                                <tr><td width="35%">ID:</td><td id="detail-id"></td></tr>
+                                <tr><td>Tên Game:</td><td id="detail-name"></td></tr>
+                                <tr><td>App ID:</td><td id="detail-appid"></td></tr>
+                                <tr><td>Đường dẫn:</td><td id="detail-path"></td></tr>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <h6>Thông tin khác</h6>
+                            <table class="table table-sm table-dark mb-0">
+                                <tr><td width="35%">Trạng thái:</td><td id="detail-status"></td></tr>
+                                <tr><td>Tài khoản:</td><td id="detail-account"></td></tr>
+                                <tr><td>Tham số:</td><td id="detail-arguments"></td></tr>
+                                <tr><td>Chạy lần cuối:</td><td id="detail-lastrun"></td></tr>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Đóng</button>
+                <button type="button" class="btn btn-info" id="copyProfileBtn">
+                    <i class="bi bi-clipboard me-1"></i> Sao chép
+                </button>
+                <button type="button" class="btn btn-primary" id="editProfileBtn">
+                    <i class="bi bi-pencil me-1"></i> Chỉnh sửa
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 @section Scripts {
 <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        // Sao chép đường dẫn
-        document.getElementById('copyPathBtn').addEventListener('click', function() {
-            const input = document.getElementById('installPath');
-            navigator.clipboard.writeText(input.value)
-                .then(() => {
-                    showToast('Đã sao chép đường dẫn vào clipboard', 'success');
-                    
-                    // Hiệu ứng cho nút
-                    const icon = this.querySelector('i');
-                    icon.classList.remove('bi-clipboard');
-                    icon.classList.add('bi-clipboard-check');
-                    
-                    setTimeout(() => {
-                        icon.classList.remove('bi-clipboard-check');
-                        icon.classList.add('bi-clipboard');
-                    }, 2000);
-                })
-                .catch(err => {
-                    console.error('Lỗi khi sao chép:', err);
-                    showToast('Không thể sao chép đường dẫn', 'error');
-                });
-        });
-        
-        // Sao chép tham số
-        if (document.getElementById('copyArgsBtn')) {
-            document.getElementById('copyArgsBtn').addEventListener('click', function() {
-                const input = document.getElementById('arguments');
-                navigator.clipboard.writeText(input.value)
-                    .then(() => {
-                        showToast('Đã sao chép tham số vào clipboard', 'success');
-                        
-                        // Hiệu ứng cho nút
-                        const icon = this.querySelector('i');
-                        icon.classList.remove('bi-clipboard');
-                        icon.classList.add('bi-clipboard-check');
-                        
-                        setTimeout(() => {
-                            icon.classList.remove('bi-clipboard-check');
-                            icon.classList.add('bi-clipboard');
-                        }, 2000);
-                    })
-                    .catch(err => {
-                        console.error('Lỗi khi sao chép:', err);
-                        showToast('Không thể sao chép tham số', 'error');
-                    });
-            });
-        }
-        
-        // Sao chép toàn bộ profile
-        document.getElementById('copyProfileBtn').addEventListener('click', function() {
-            const profileData = @Html.Raw(Json.Serialize(Model.Profile));
-            
-            navigator.clipboard.writeText(JSON.stringify(profileData, null, 2))
-                .then(() => {
-                    showToast('Đã sao chép thông tin profile vào clipboard', 'success');
-                })
-                .catch(err => {
-                    console.error('Lỗi khi sao chép:', err);
-                    showToast('Không thể sao chép thông tin profile', 'error');
-                });
-        });
-        
-        // Nút xóa
-        document.getElementById('deleteBtn').addEventListener('click', function() {
-            const modal = new bootstrap.Modal(document.getElementById('deleteConfirmModal'));
-            modal.show();
-        });
-        
-        // Xác nhận xóa
-        document.getElementById('confirmDeleteBtn').addEventListener('click', function() {
-            // Hiển thị loading
-            this.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span> Đang xóa...';
-            this.disabled = true;
-            
-            fetch(`/api/appprofiles/@Model.Profile.Id`, {
-                method: 'DELETE'
-            })
+    let profiles = [];
+    let selectedProfile = null;
+
+    function loadProfiles() {
+        document.getElementById('profilesList').innerHTML = `
+            <tr>
+                <td colspan="7" class="text-center">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Đang tải...</span>
+                    </div>
+                    <p class="mt-2">Đang tải danh sách profile...</p>
+                </td>
+            </tr>
+        `;
+
+        fetch('/api/appprofiles')
             .then(response => {
-                if (!response.ok) {
-                    throw new Error(`HTTP error! Status: ${response.status}`);
-                }
-                
-                showToast('Đã xóa profile thành công', 'success');
-                
-                // Chuyển về trang danh sách sau 1 giây
-                setTimeout(() => {
-                    window.location.href = '/Profiles';
-                }, 1000);
-            })
-            .catch(error => {
-                console.error('Lỗi khi xóa profile:', error);
-                showToast('Không thể xóa profile', 'error');
-                
-                // Khôi phục nút
-                this.innerHTML = 'Xóa';
-                this.disabled = false;
-            });
-        });
-        
-        // Tạo bản sao profile
-        document.getElementById('duplicateBtn').addEventListener('click', function() {
-            const profileData = @Html.Raw(Json.Serialize(Model.Profile));
-            
-            // Thay đổi một số thông tin cho bản sao
-            profileData.id = 0; // ID mới
-            profileData.name = `${profileData.name} (Bản sao)`;
-            profileData.status = 'Ready';
-            
-            this.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span> Đang tạo...';
-            this.disabled = true;
-            
-            fetch('/api/appprofiles', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(profileData)
-            })
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error(`HTTP error! Status: ${response.status}`);
-                }
+                if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
                 return response.json();
             })
             .then(data => {
-                showToast('Đã tạo bản sao profile thành công', 'success');
-                
-                // Chuyển đến trang chi tiết của profile mới
-                setTimeout(() => {
-                    window.location.href = `/ProfileDetails/${data.id}`;
-                }, 1000);
+                profiles = data;
+                displayProfiles(profiles);
             })
             .catch(error => {
-                console.error('Lỗi khi tạo bản sao profile:', error);
-                showToast('Không thể tạo bản sao profile', 'error');
-                
-                // Khôi phục nút
-                this.innerHTML = '<i class="bi bi-files me-2"></i>Tạo bản sao';
-                this.disabled = false;
+                console.error('Lỗi khi tải profiles:', error);
+                document.getElementById('profilesList').innerHTML = `
+                    <tr>
+                        <td colspan="7" class="text-center text-danger">
+                            <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                            Không thể tải danh sách profiles: ${error.message}
+                        </td>
+                    </tr>
+                `;
             });
-        });
-    });
-    
-    // Hiển thị toast thông báo
-    function showToast(message, type = 'success', duration = 5000) {
-        const container = document.querySelector('.toast-container') || document.body;
-        const toastId = 'toast-' + Date.now();
-        
-        let bgClass = 'bg-success';
-        let icon = 'bi-check-circle-fill';
-        
-        if (type === 'error') {
-            bgClass = 'bg-danger';
-            icon = 'bi-exclamation-triangle-fill';
-        } else if (type === 'warning') {
-            bgClass = 'bg-warning';
-            icon = 'bi-exclamation-circle-fill';
-        } else if (type === 'info') {
-            bgClass = 'bg-info';
-            icon = 'bi-info-circle-fill';
+    }
+
+    function displayProfiles(data) {
+        const tbody = document.getElementById('profilesList');
+        tbody.innerHTML = '';
+
+        if (!data || data.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="7" class="text-center">
+                        <i class="bi bi-info-circle-fill me-2 text-info"></i>
+                        Chưa có profile nào.
+                    </td>
+                </tr>
+            `;
+            return;
         }
-        
+
+        data.sort((a, b) => a.id - b.id);
+        data.forEach(profile => {
+            let statusBadge = profile.status === 'Running' ? '<span class="badge bg-success">Đang chạy</span>' :
+                             profile.status === 'Ready' ? '<span class="badge bg-primary">Sẵn sàng</span>' :
+                             profile.status === 'Stopped' ? '<span class="badge bg-secondary">Đã dừng</span>' :
+                             `<span class="badge bg-info">${profile.status || 'Không xác định'}</span>`;
+
+            let lastRunFormatted = profile.lastRun ? new Date(profile.lastRun).toLocaleString('vi-VN') : 'Chưa chạy';
+            let truncatedPath = profile.installDirectory && profile.installDirectory.length > 30 
+                ? profile.installDirectory.substring(0, 30) + '...' : (profile.installDirectory || 'N/A');
+
+            tbody.innerHTML += `
+                <tr>
+                    <td>${profile.id}</td>
+                    <td class="fw-bold">${profile.name || 'Không có tên'}</td>
+                    <td>${profile.appID || 'N/A'}</td>
+                    <td title="${profile.installDirectory || ''}">${truncatedPath}</td>
+                    <td>${statusBadge}</td>
+                    <td>${lastRunFormatted}</td>
+                    <td>
+                        <div class="btn-group btn-group-sm">
+                            <button type="button" class="btn btn-info view-btn" data-id="${profile.id}" title="Xem chi tiết"><i class="bi bi-eye"></i></button>
+                            <button type="button" class="btn btn-primary edit-btn" data-id="${profile.id}" title="Chỉnh sửa"><i class="bi bi-pencil"></i></button>
+                            <button type="button" class="btn btn-danger delete-btn" data-id="${profile.id}" title="Xóa"><i class="bi bi-trash"></i></button>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        });
+
+        document.querySelectorAll('.view-btn').forEach(btn => btn.addEventListener('click', () => viewProfileDetails(btn.getAttribute('data-id'))));
+        document.querySelectorAll('.edit-btn').forEach(btn => btn.addEventListener('click', () => editProfile(btn.getAttribute('data-id'))));
+        document.querySelectorAll('.delete-btn').forEach(btn => btn.addEventListener('click', () => confirmDeleteProfile(btn.getAttribute('data-id'))));
+    }
+
+    function viewProfileDetails(id) {
+        const profile = profiles.find(p => p.id == id);
+        if (!profile) return;
+
+        selectedProfile = profile;
+        document.getElementById('detail-id').textContent = profile.id;
+        document.getElementById('detail-name').textContent = profile.name || 'Không có tên';
+        document.getElementById('detail-appid').textContent = profile.appID || 'N/A';
+        document.getElementById('detail-path').textContent = profile.installDirectory || 'N/A';
+        document.getElementById('detail-status').textContent = profile.status || 'Không xác định';
+        document.getElementById('detail-account').textContent = profile.anonymousLogin ? 'Ẩn danh' : (profile.steamUsername ? 'Có tài khoản' : 'Không có');
+        document.getElementById('detail-arguments').textContent = profile.arguments || 'Không có';
+        document.getElementById('detail-lastrun').textContent = profile.lastRun ? new Date(profile.lastRun).toLocaleString('vi-VN') : 'Chưa chạy';
+        document.getElementById('detailsModalLabel').textContent = `Chi tiết Profile: ${profile.name || 'Không có tên'}`;
+
+        new bootstrap.Modal(document.getElementById('detailsModal')).show();
+    }
+
+    function editProfile(id) {
+        window.location.href = `/AppProfiles?edit=${id}`;
+    }
+
+    function confirmDeleteProfile(id) {
+        const profile = profiles.find(p => p.id == id);
+        if (!profile) return;
+
+        selectedProfile = profile;
+        document.getElementById('deleteGameName').textContent = profile.name || 'Không có tên';
+        new bootstrap.Modal(document.getElementById('deleteConfirmModal')).show();
+    }
+
+    function deleteProfile() {
+        if (!selectedProfile) return;
+
+        const deleteBtn = document.getElementById('confirmDeleteBtn');
+        const originalText = deleteBtn.innerHTML;
+        deleteBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Đang xóa...';
+        deleteBtn.disabled = true;
+
+        fetch(`/api/appprofiles/${selectedProfile.id}`, { method: 'DELETE' })
+            .then(response => {
+                if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
+                bootstrap.Modal.getInstance(document.getElementById('deleteConfirmModal')).hide();
+                showToast(`Đã xóa profile "${selectedProfile.name || 'Không có tên'}" thành công`, 'success');
+                loadProfiles();
+            })
+            .catch(error => {
+                console.error('Lỗi khi xóa profile:', error);
+                showToast(`Lỗi khi xóa profile: ${error.message}`, 'error');
+            })
+            .finally(() => {
+                deleteBtn.innerHTML = originalText;
+                deleteBtn.disabled = false;
+            });
+    }
+
+    function copyProfile() {
+        if (!selectedProfile) return;
+
+        const profileData = {
+            id: selectedProfile.id,
+            name: selectedProfile.name,
+            appID: selectedProfile.appID,
+            installDirectory: selectedProfile.installDirectory,
+            steamUsername: selectedProfile.steamUsername,
+            steamPassword: selectedProfile.steamPassword,
+            arguments: selectedProfile.arguments,
+            anonymousLogin: selectedProfile.anonymousLogin
+        };
+
+        navigator.clipboard.writeText(JSON.stringify(profileData, null, 2))
+            .then(() => {
+                showToast(`Đã sao chép profile "${selectedProfile.name || 'Không có tên'}"`, 'success');
+                bootstrap.Modal.getInstance(document.getElementById('detailsModal')).hide();
+            })
+            .catch(err => showToast(`Lỗi khi sao chép: ${err}`, 'error'));
+    }
+
+    function showToast(message, type) {
         const toast = document.createElement('div');
         toast.classList.add('position-fixed', 'bottom-0', 'end-0', 'p-3');
         toast.style.zIndex = 1070;
-        
         toast.innerHTML = `
-            <div class="toast align-items-center text-white ${bgClass}" role="alert" aria-live="assertive" aria-atomic="true">
+            <div class="toast align-items-center text-white ${type === 'success' ? 'bg-success' : 'bg-danger'}" role="alert">
                 <div class="d-flex">
                     <div class="toast-body">
-                        <i class="bi ${icon} me-2"></i>
+                        <i class="bi bi-${type === 'success' ? 'check-circle-fill' : 'exclamation-triangle-fill'} me-2"></i>
                         ${message}
                     </div>
                     <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
                 </div>
             </div>
         `;
-        
         document.body.appendChild(toast);
-        const toastEl = new bootstrap.Toast(toast.querySelector('.toast'), { delay: duration });
-        toastEl.show();
-        
-        // Tự động xóa toast sau khi ẩn
-        toast.querySelector('.toast').addEventListener('hidden.bs.toast', function () {
-            toast.remove();
-        });
+        new bootstrap.Toast(toast.querySelector('.toast'), { delay: 3000 }).show();
     }
-</script>
 
-<style>
-    /* Card styles */
-    .card {
-        transition: transform 0.2s, box-shadow 0.2s;
-    }
-    
-    /* Form styles */
-    .form-control {
-        transition: all 0.2s ease;
-    }
-    
-    .form-control:focus {
-        border-color: var(--steam-light-blue);
-        box-shadow: 0 0 0 0.25rem rgba(102, 192, 244, 0.25);
-    }
-    
-    /* Button animation */
-    .btn {
-        transition: all 0.2s ease;
-    }
-    
-    .btn:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-    }
-    
-    /* Text styles */
-    .text-primary {
-        color: var(--steam-light-blue) !important;
-    }
-    
-    /* Badge styles */
-    .badge {
-        font-weight: 500;
-        padding: 0.5em 0.7em;
-    }
-</style>
+    document.addEventListener('DOMContentLoaded', () => {
+        loadProfiles();
+        document.getElementById('refreshBtn').addEventListener('click', loadProfiles);
+        document.getElementById('confirmDeleteBtn').addEventListener('click', deleteProfile);
+        document.getElementById('editProfileBtn').addEventListener('click', () => selectedProfile && editProfile(selectedProfile.id));
+        document.getElementById('copyProfileBtn').addEventListener('click', copyProfile);
+    });
+</script>
 }
