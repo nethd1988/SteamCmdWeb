@@ -1,5 +1,15 @@
+/* Biến toàn cục */
+:root {
+  --dark-bg: #1a1a1a;
+  --dark-accent: #252525;
+  --steam-blue: #1b2838;
+  --steam-light-blue: #66c0f4;
+}
+
 html {
   font-size: 14px;
+  position: relative;
+  min-height: 100%;
 }
 
 @media (min-width: 768px) {
@@ -8,24 +18,169 @@ html {
   }
 }
 
-.btn:focus, .btn:active:focus, .btn-link.nav-link:focus, .form-control:focus, .form-check-input:focus {
-  box-shadow: 0 0 0 0.1rem white, 0 0 0 0.25rem #258cfb;
-}
-
-html {
-  position: relative;
-  min-height: 100%;
-}
-
 body {
-  margin-bottom: 60px;
+  background-color: var(--dark-bg);
+  color: #e2e2e2;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
-.form-floating > .form-control-plaintext::placeholder, .form-floating > .form-control::placeholder {
-  color: var(--bs-secondary-color);
-  text-align: end;
+/* Scrollbar tùy chỉnh */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
 }
 
-.form-floating > .form-control-plaintext:focus::placeholder, .form-floating > .form-control:focus::placeholder {
-  text-align: start;
+::-webkit-scrollbar-track {
+  background: #2a2a2a;
+  border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #555;
+  border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--steam-light-blue);
+}
+
+/* Card styles */
+.card {
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.card:hover {
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
+}
+
+/* Button styles */
+.btn {
+  transition: all 0.2s ease;
+}
+
+.btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+/* Game card */
+.game-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.game-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  background: linear-gradient(90deg, var(--steam-light-blue), transparent);
+  transform: translateX(-100%);
+  transition: transform 0.3s ease;
+}
+
+.game-card:hover::before {
+  transform: translateX(0);
+}
+
+/* Dropdown menu */
+.dropdown-menu {
+  background-color: var(--dark-accent);
+  border: 1px solid #444;
+  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.5);
+}
+
+.dropdown-item {
+  color: #e2e2e2;
+}
+
+.dropdown-item:hover, .dropdown-item:focus {
+  color: #fff;
+  background-color: rgba(102, 192, 244, 0.2);
+}
+
+.dropdown-divider {
+  border-top: 1px solid #444;
+}
+
+/* Toast container */
+.toast-container {
+  z-index: 1070;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  0% { opacity: 0; transform: translateY(10px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+.fadeIn {
+  animation: fadeIn 0.3s ease forwards;
+}
+
+/* Form styles */
+.form-control, .form-select {
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.form-label {
+  font-weight: 500;
+  color: var(--steam-light-blue);
+}
+
+/* Badges */
+.badge {
+  padding: 0.5em 0.6em;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.badge:hover {
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+/* Tooltips */
+.tooltip {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.tooltip-inner {
+  background-color: var(--steam-blue);
+  border: 1px solid var(--steam-light-blue);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* Table styles */
+.table > :not(caption) > * > * {
+  border-bottom-color: #444;
+}
+
+tr.selected {
+  background-color: rgba(102, 192, 244, 0.2) !important;
+}
+
+/* Modal styles */
+.modal-backdrop.show {
+  opacity: 0.7;
+}
+
+/* Modal animation */
+.modal.fade .modal-dialog {
+  transform: scale(0.9);
+  transition: transform 0.2s ease;
+}
+
+.modal.show .modal-dialog {
+  transform: scale(1);
+}
+
+/* Footer */
+.footer {
+  position: absolute;
+  bottom: 0;
+  width: 100%;
+  white-space: nowrap;
+  line-height: 60px;
 }

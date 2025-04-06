@@ -1,256 +1,4 @@
-@page
-@model SteamCmdWeb.Pages.AppProfilesModel
-@{
-    ViewData["Title"] = "Game App Profiles";
-}
-
-<div class="card mb-4">
-    <div class="card-header d-flex justify-content-between align-items-center">
-        <h5 class="mb-0">
-            <i class="bi bi-controller me-2"></i>
-            Danh sách Game App Profiles
-        </h5>
-        <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addAppProfileModal">
-            <i class="bi bi-plus-circle me-1"></i> Thêm game mới
-        </button>
-    </div>
-    <div class="card-body">
-        <div class="row" id="appProfilesContainer">
-            <div class="col-12 text-center py-5">
-                <div class="spinner-border text-primary" role="status">
-                    <span class="visually-hidden">Đang tải...</span>
-                </div>
-                <p class="mt-3">Đang tải danh sách game...</p>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Modal Thêm/Sửa App Profile -->
-<div class="modal fade" id="addAppProfileModal" tabindex="-1" aria-labelledby="addAppProfileModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content bg-dark">
-            <div class="modal-header">
-                <h5 class="modal-title" id="addAppProfileModalLabel">Thêm Game App Profile mới</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <form id="appProfileForm">
-                    <input type="hidden" id="profileId" value="0">
-                    
-                    <div class="row mb-3">
-                        <div class="col-md-8">
-                            <label for="name" class="form-label">Tên Game</label>
-                            <input type="text" class="form-control" id="name" required>
-                        </div>
-                        <div class="col-md-4">
-                            <label for="appId" class="form-label">Steam App ID</label>
-                            <input type="text" class="form-control" id="appId" required>
-                        </div>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label for="installDirectory" class="form-label">Đường dẫn cài đặt</label>
-                        <input type="text" class="form-control" id="installDirectory" required>
-                        <div class="form-text">Đường dẫn đến thư mục cài đặt game</div>
-                    </div>
-                    
-                    <div class="row mb-3">
-                        <div class="col-md-6">
-                            <label for="steamUsername" class="form-label">Tên đăng nhập Steam</label>
-                            <input type="text" class="form-control" id="steamUsername">
-                        </div>
-                        <div class="col-md-6">
-                            <label for="steamPassword" class="form-label">Mật khẩu Steam</label>
-                            <input type="password" class="form-control" id="steamPassword">
-                        </div>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label for="arguments" class="form-label">Tham số bổ sung</label>
-                        <input type="text" class="form-control" id="arguments">
-                        <div class="form-text">Các tham số bổ sung khi khởi chạy game</div>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" id="anonymousLogin">
-                            <label class="form-check-label" for="anonymousLogin">
-                                Đăng nhập ẩn danh
-                            </label>
-                        </div>
-                    </div>
-                </form>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Hủy</button>
-                <button type="button" class="btn btn-primary" id="saveAppProfileBtn">Lưu</button>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Template cho Game Card -->
-<template id="gameCardTemplate">
-    <div class="col-md-4 col-lg-3 mb-4">
-        <div class="card h-100 game-card">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <h6 class="mb-0 game-name">Game Name</h6>
-                <div class="dropdown">
-                    <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                        <i class="bi bi-three-dots-vertical"></i>
-                    </button>
-                    <ul class="dropdown-menu dropdown-menu-dark">
-                        <li><a class="dropdown-item edit-game" href="#"><i class="bi bi-pencil me-2"></i>Chỉnh sửa</a></li>
-                        <li><a class="dropdown-item delete-game" href="#"><i class="bi bi-trash me-2"></i>Xóa</a></li>
-                    </ul>
-                </div>
-            </div>
-            <div class="card-body">
-                <div class="game-details">
-                    <p class="mb-2"><strong>App ID:</strong> <span class="game-appid">000000</span></p>
-                    <p class="mb-2"><strong>Đường dẫn:</strong> <span class="game-path">C:\Games\...</span></p>
-                    <p class="mb-0"><strong>Tài khoản:</strong> <span class="game-account">******</span></p>
-                </div>
-            </div>
-            <div class="card-footer">
-                <div class="d-grid">
-                    <button class="btn btn-primary copy-profile-btn">
-                        <i class="bi bi-clipboard me-2"></i>Sao chép Profile
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-</template>
-
-<!-- Modal xác nhận xóa -->
-<div class="modal fade" id="deleteConfirmModal" tabindex="-1" aria-labelledby="deleteConfirmModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content bg-dark">
-            <div class="modal-header">
-                <h5 class="modal-title" id="deleteConfirmModalLabel">Xác nhận xóa</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <p>Bạn có chắc chắn muốn xóa game profile "<span id="deleteGameName"></span>"?</p>
-                <p class="text-danger">Lưu ý: Hành động này không thể hoàn tác!</p>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Hủy</button>
-                <button type="button" class="btn btn-danger" id="confirmDeleteBtn">Xóa</button>
-            </div>
-        </div>
-    </div>
-</div>
-
-@section Scripts {
-<script>
-    let gameProfiles = [];
-    let profileToDelete = null;
-    let isEditMode = false;
-    
-    // Lấy danh sách game profiles
-    function loadGameProfiles() {
-        fetch('/api/appprofiles')
-            .then(response => response.json())
-            .then(data => {
-                gameProfiles = data;
-                displayGameProfiles();
-            })
-            .catch(error => {
-                console.error('Lỗi khi tải game profiles:', error);
-                document.getElementById('appProfilesContainer').innerHTML = `
-                    <div class="col-12 text-center py-5">
-                        <div class="alert alert-danger" role="alert">
-                            <i class="bi bi-exclamation-triangle-fill me-2"></i>
-                            Không thể tải danh sách game. Vui lòng thử lại sau.
-                        </div>
-                    </div>
-                `;
-            });
-    }
-    
-    // Hiển thị danh sách game profiles
-    function displayGameProfiles() {
-        const container = document.getElementById('appProfilesContainer');
-        container.innerHTML = '';
-        
-        if (gameProfiles.length === 0) {
-            container.innerHTML = `
-                <div class="col-12 text-center py-5">
-                    <p class="mb-3"><i class="bi bi-controller fs-1 text-muted"></i></p>
-                    <h5 class="text-muted">Chưa có game nào được thêm</h5>
-                    <p class="text-muted">Nhấn nút "Thêm game mới" để bắt đầu</p>
-                </div>
-            `;
-            return;
-        }
-        
-        const template = document.getElementById('gameCardTemplate');
-        
-        gameProfiles.forEach(game => {
-            const card = template.content.cloneNode(true);
-            
-            // Điền thông tin game
-            card.querySelector('.game-name').textContent = game.name;
-            card.querySelector('.game-appid').textContent = game.appID;
-            card.querySelector('.game-path').textContent = truncateText(game.installDirectory, 30);
-            card.querySelector('.game-path').title = game.installDirectory;
-            
-            card.querySelector('.game-account').textContent = game.anonymousLogin ? 'Ẩn danh' : '********';
-            
-            // Gắn sự kiện
-            card.querySelector('.edit-game').onclick = () => editGame(game.id);
-            card.querySelector('.delete-game').onclick = () => deleteGame(game.id);
-            card.querySelector('.copy-profile-btn').onclick = () => copyGameProfile(game.id);
-            
-            // Thêm ID cho card
-            card.querySelector('.game-card').setAttribute('data-game-id', game.id);
-            
-            container.appendChild(card);
-        });
-    }
-    
-    // Mở modal chỉnh sửa
-    function editGame(id) {
-        const game = gameProfiles.find(g => g.id === id);
-        if (!game) return;
-        
-        isEditMode = true;
-        document.getElementById('addAppProfileModalLabel').textContent = 'Chỉnh sửa Game Profile';
-        
-        document.getElementById('profileId').value = game.id;
-        document.getElementById('name').value = game.name;
-        document.getElementById('appId').value = game.appID;
-        document.getElementById('installDirectory').value = game.installDirectory;
-        document.getElementById('arguments').value = game.arguments || '';
-        document.getElementById('anonymousLogin').checked = game.anonymousLogin;
-        
-        document.getElementById('steamUsername').value = '';  // Không hiển thị thông tin đã mã hóa
-        document.getElementById('steamPassword').value = '';
-        
-        const modal = new bootstrap.Modal(document.getElementById('addAppProfileModal'));
-        modal.show();
-        
-        return false; // Ngăn sự kiện mặc định của thẻ a
-    }
-    
-    // Mở modal xác nhận xóa
-    function deleteGame(id) {
-        const game = gameProfiles.find(g => g.id === id);
-        if (!game) return;
-        
-        profileToDelete = game;
-        document.getElementById('deleteGameName').textContent = game.name;
-        
-        const modal = new bootstrap.Modal(document.getElementById('deleteConfirmModal'));
-        modal.show();
-        
-        return false; // Ngăn sự kiện mặc định của thẻ a
-    }
-    
-    // Sao chép thông tin profile
+// Sao chép thông tin profile
     function copyGameProfile(id) {
         const game = gameProfiles.find(g => g.id === id);
         if (!game) return;
@@ -265,7 +13,7 @@
                 <div class="d-flex">
                     <div class="toast-body">
                         <i class="bi bi-check-circle-fill me-2"></i>
-                        Đã sao chép thông tin game "${game.name}" vào clipboard
+                        Đã sao chép thông tin game "${game.name || 'Không có tên'}" vào clipboard
                     </div>
                     <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
                 </div>
@@ -355,6 +103,8 @@
             }
         }
         
+        console.log("Dữ liệu gửi lên:", gameData); // Log để debug
+        
         const url = isEditMode ? `/api/appprofiles/${id}` : '/api/appprofiles';
         const method = isEditMode ? 'PUT' : 'POST';
         
@@ -374,6 +124,27 @@
         .then(data => {
             bootstrap.Modal.getInstance(document.getElementById('addAppProfileModal')).hide();
             loadGameProfiles();
+            
+            // Thông báo thành công
+            const toast = document.createElement('div');
+            toast.classList.add('position-fixed', 'bottom-0', 'end-0', 'p-3');
+            toast.style.zIndex = 1070;
+            
+            toast.innerHTML = `
+                <div class="toast align-items-center text-white bg-success" role="alert" aria-live="assertive" aria-atomic="true">
+                    <div class="d-flex">
+                        <div class="toast-body">
+                            <i class="bi bi-check-circle-fill me-2"></i>
+                            ${isEditMode ? 'Cập nhật' : 'Thêm mới'} game thành công!
+                        </div>
+                        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(toast);
+            const toastEl = new bootstrap.Toast(toast.querySelector('.toast'), { delay: 3000 });
+            toastEl.show();
         })
         .catch(error => {
             console.error('Lỗi khi lưu game profile:', error);
@@ -385,6 +156,12 @@
     function confirmDeleteGame() {
         if (!profileToDelete) return;
         
+        // Hiển thị loading trong nút delete
+        const deleteBtn = document.getElementById('confirmDeleteBtn');
+        const originalText = deleteBtn.innerHTML;
+        deleteBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Đang xóa...';
+        deleteBtn.disabled = true;
+        
         fetch(`/api/appprofiles/${profileToDelete.id}`, {
             method: 'DELETE'
         })
@@ -394,11 +171,39 @@
             }
             
             bootstrap.Modal.getInstance(document.getElementById('deleteConfirmModal')).hide();
+            
+            // Hiển thị thông báo thành công
+            const toast = document.createElement('div');
+            toast.classList.add('position-fixed', 'bottom-0', 'end-0', 'p-3');
+            toast.style.zIndex = 1070;
+            
+            toast.innerHTML = `
+                <div class="toast align-items-center text-white bg-success" role="alert" aria-live="assertive" aria-atomic="true">
+                    <div class="d-flex">
+                        <div class="toast-body">
+                            <i class="bi bi-check-circle-fill me-2"></i>
+                            Đã xóa game "${profileToDelete.name || 'Không có tên'}" thành công!
+                        </div>
+                        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(toast);
+            const toastEl = new bootstrap.Toast(toast.querySelector('.toast'), { delay: 3000 });
+            toastEl.show();
+            
+            // Cập nhật lại danh sách
             loadGameProfiles();
         })
         .catch(error => {
             console.error('Lỗi khi xóa game profile:', error);
             alert('Đã xảy ra lỗi khi xóa game profile!');
+        })
+        .finally(() => {
+            // Khôi phục nút delete
+            deleteBtn.innerHTML = originalText;
+            deleteBtn.disabled = false;
         });
     }
     
@@ -420,6 +225,47 @@
         
         // Sự kiện xác nhận xóa
         document.getElementById('confirmDeleteBtn').addEventListener('click', confirmDeleteGame);
+        
+        // Kiểm tra xem có query param edit không
+        const urlParams = new URLSearchParams(window.location.search);
+        const editId = urlParams.get('edit');
+        if (editId) {
+            // Tải dữ liệu sau đó mở modal edit
+            const checkDataLoaded = setInterval(() => {
+                if (gameProfiles.length > 0) {
+                    clearInterval(checkDataLoaded);
+                    const id = parseInt(editId);
+                    if (!isNaN(id)) {
+                        editGame(id);
+                    }
+                }
+            }, 100);
+        }
+        
+        // Kiểm tra xem có query param copyProfile không
+        const copyProfile = urlParams.get('copyProfile');
+        if (copyProfile) {
+            try {
+                const profile = JSON.parse(decodeURIComponent(copyProfile));
+                if (profile) {
+                    // Đặt dữ liệu vào form
+                    document.getElementById('profileId').value = 0; // ID mới
+                    document.getElementById('name').value = profile.name || "";
+                    document.getElementById('appId').value = profile.appID || "";
+                    document.getElementById('installDirectory').value = profile.installDirectory || "";
+                    document.getElementById('arguments').value = profile.arguments || "";
+                    document.getElementById('anonymousLogin').checked = profile.anonymousLogin || false;
+                    document.getElementById('steamUsername').value = profile.steamUsername || "";
+                    document.getElementById('steamPassword').value = profile.steamPassword || "";
+                    
+                    // Hiển thị modal
+                    const modal = new bootstrap.Modal(document.getElementById('addAppProfileModal'));
+                    modal.show();
+                }
+            } catch (e) {
+                console.error('Lỗi khi parse profile từ URL:', e);
+            }
+        }
     });
 </script>
 
@@ -427,6 +273,7 @@
     .game-card {
         transition: transform 0.2s, box-shadow 0.2s;
         background-color: #1e1e1e;
+        cursor: pointer;
     }
     
     .game-card:hover {
@@ -441,6 +288,22 @@
     
     .game-path {
         word-break: break-all;
+    }
+    
+    /* Tạo hiệu ứng khi hover vào các nút */
+    .btn-primary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    }
+    
+    /* Cải thiện card chi tiết game */
+    .table-dark {
+        background-color: #1e1e1e;
+        color: #e2e2e2;
+    }
+    
+    .table-dark td {
+        padding: 0.5rem;
     }
 </style>
 }

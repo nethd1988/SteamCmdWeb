@@ -5,6 +5,8 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using SteamCmdWeb;
 using System.IO;
+using System.Text.Json.Serialization;
+using System.Text.Json;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -13,6 +15,10 @@ builder.Services.AddControllers()
     .AddJsonOptions(options => {
         options.JsonSerializerOptions.WriteIndented = true;
         options.JsonSerializerOptions.PropertyNameCaseInsensitive = true;
+        options.JsonSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
+        options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+        // Đảm bảo không xảy ra vấn đề với tham chiếu vòng tròn
+        options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
     });
 
 builder.Services.AddRazorPages();
@@ -95,6 +101,14 @@ foreach (var path in new[] { dataPath, profilesPath, silentSyncPath, backupPath,
         Directory.CreateDirectory(path);
         Console.WriteLine($"Created directory: {path}");
     }
+}
+
+// Kiểm tra và tạo file profiles.json nếu chưa tồn tại
+var profilesFilePath = Path.Combine(dataPath, "profiles.json");
+if (!File.Exists(profilesFilePath))
+{
+    File.WriteAllText(profilesFilePath, "[]");
+    Console.WriteLine($"Created empty profiles.json file: {profilesFilePath}");
 }
 
 // Ghi log khởi động

@@ -5,7 +5,7 @@
 }
 
 <div class="row">
-    <div class="col-md-12">
+    <div class="col-md-8">
         <div class="card mb-4">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <h5 class="mb-0">
@@ -43,13 +43,18 @@
                         </div>
                     </div>
                 </div>
+                
+                <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                    <a href="/AppProfiles" class="btn btn-primary">
+                        <i class="bi bi-controller me-1"></i> Quản lý Game Profiles
+                    </a>
+                    <a href="/ServerStatus" class="btn btn-outline-primary">
+                        <i class="bi bi-activity me-1"></i> Xem trạng thái Server
+                    </a>
+                </div>
             </div>
         </div>
-    </div>
-</div>
-
-<div class="row">
-    <div class="col-md-12">
+        
         <div class="card">
             <div class="card-header">
                 <h5 class="mb-0">
@@ -64,16 +69,88 @@
             </div>
         </div>
     </div>
+    
+    <div class="col-md-4">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="bi bi-controller me-2"></i>
+                    Game Profiles
+                </h5>
+            </div>
+            <div class="card-body">
+                <div id="recentProfiles">
+                    <div class="text-center py-3">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Đang tải...</span>
+                        </div>
+                        <p class="mt-2">Đang tải profiles...</p>
+                    </div>
+                </div>
+                
+                <div class="d-grid gap-2 mt-3">
+                    <a href="/AppProfiles" class="btn btn-outline-primary">
+                        <i class="bi bi-grid-3x3-gap me-1"></i> Xem tất cả profiles
+                    </a>
+                    <button type="button" class="btn btn-primary" onclick="location.href='/AppProfiles?add=true'">
+                        <i class="bi bi-plus-circle me-1"></i> Thêm game mới
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="bi bi-gear me-2"></i>
+                    Thao tác nhanh
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="list-group">
+                    <a href="/ClientBackup" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center bg-dark text-white border-secondary">
+                        <div>
+                            <i class="bi bi-cloud-download me-2"></i>
+                            Backup & Import Profiles
+                        </div>
+                        <i class="bi bi-chevron-right"></i>
+                    </a>
+                    <a href="/Profiles" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center bg-dark text-white border-secondary">
+                        <div>
+                            <i class="bi bi-list-check me-2"></i>
+                            Danh sách Profile
+                        </div>
+                        <i class="bi bi-chevron-right"></i>
+                    </a>
+                    <a href="/ServerStatus" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center bg-dark text-white border-secondary">
+                        <div>
+                            <i class="bi bi-hdd-network me-2"></i>
+                            Trạng thái Server
+                        </div>
+                        <i class="bi bi-chevron-right"></i>
+                    </a>
+                    <button id="backupAllBtn" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center bg-dark text-white border-secondary">
+                        <div>
+                            <i class="bi bi-save me-2"></i>
+                            Backup tất cả Profile
+                        </div>
+                        <i class="bi bi-chevron-right"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
 @section Scripts {
 <script>
     // Lấy số lượng profiles
     function loadProfileCount() {
-        fetch('/api/profiles')
+        fetch('/api/appprofiles')
             .then(response => response.json())
             .then(data => {
                 document.getElementById('profileCount').textContent = data.length;
+                displayRecentProfiles(data);
             })
             .catch(error => {
                 document.getElementById('profileCount').textContent = 'Lỗi tải dữ liệu';
@@ -81,29 +158,153 @@
             });
     }
     
+    // Hiển thị profiles gần đây
+    function displayRecentProfiles(profiles) {
+        const container = document.getElementById('recentProfiles');
+        
+        if (!profiles || profiles.length === 0) {
+            container.innerHTML = `
+                <div class="text-center py-3">
+                    <p class="mb-0 text-muted">Chưa có game nào được thêm</p>
+                </div>
+            `;
+            return;
+        }
+        
+        // Lấy 5 profiles mới nhất
+        const recentProfiles = profiles
+            .sort((a, b) => new Date(b.lastRun) - new Date(a.lastRun))
+            .slice(0, 5);
+        
+        let html = '<ul class="list-group">';
+        
+        recentProfiles.forEach(profile => {
+            // Xác định trạng thái
+            let statusBadge = '';
+            if (profile.status === 'Running') {
+                statusBadge = '<span class="badge bg-success ms-2">Đang chạy</span>';
+            } else if (profile.status === 'Ready') {
+                statusBadge = '<span class="badge bg-primary ms-2">Sẵn sàng</span>';
+            }
+            
+            html += `
+                <li class="list-group-item bg-dark text-white border-secondary d-flex justify-content-between align-items-center">
+                    <div>
+                        <strong>${profile.name || 'Không có tên'}</strong>
+                        ${statusBadge}
+                        <div class="small text-muted">App ID: ${profile.appID || 'N/A'}</div>
+                    </div>
+                    <a href="/AppProfiles?edit=${profile.id}" class="btn btn-sm btn-outline-primary">
+                        <i class="bi bi-pencil"></i>
+                    </a>
+                </li>
+            `;
+        });
+        
+        html += '</ul>';
+        container.innerHTML = html;
+    }
+    
     // Mô phỏng nhật ký hoạt động
     function loadActivityLog() {
         // Thông tin giả lập cho mục đích demo
         const logEntries = [
-            { timestamp: '@DateTime.Now.AddMinutes(-45).ToString("yyyy-MM-dd HH:mm:ss")', message: 'Server khởi động thành công' },
-            { timestamp: '@DateTime.Now.AddMinutes(-30).ToString("yyyy-MM-dd HH:mm:ss")', message: 'Client 192.168.1.100 đã kết nối' },
-            { timestamp: '@DateTime.Now.AddMinutes(-29).ToString("yyyy-MM-dd HH:mm:ss")', message: 'Client 192.168.1.100 đã yêu cầu danh sách profiles' },
-            { timestamp: '@DateTime.Now.AddMinutes(-25).ToString("yyyy-MM-dd HH:mm:ss")', message: 'Client 192.168.1.100 đã ngắt kết nối' },
-            { timestamp: '@DateTime.Now.AddMinutes(-10).ToString("yyyy-MM-dd HH:mm:ss")', message: 'Client 192.168.1.150 đã kết nối' },
-            { timestamp: '@DateTime.Now.AddMinutes(-5).ToString("yyyy-MM-dd HH:mm:ss")', message: 'Client 192.168.1.150 đã ngắt kết nối' }
+            { timestamp: '@DateTime.Now.AddMinutes(-45).ToString("yyyy-MM-dd HH:mm:ss")', message: 'Server khởi động thành công', level: 'info' },
+            { timestamp: '@DateTime.Now.AddMinutes(-30).ToString("yyyy-MM-dd HH:mm:ss")', message: 'Client 192.168.1.100 đã kết nối', level: 'info' },
+            { timestamp: '@DateTime.Now.AddMinutes(-29).ToString("yyyy-MM-dd HH:mm:ss")', message: 'Client 192.168.1.100 đã yêu cầu danh sách profiles', level: 'info' },
+            { timestamp: '@DateTime.Now.AddMinutes(-25).ToString("yyyy-MM-dd HH:mm:ss")', message: 'Client 192.168.1.100 đã ngắt kết nối', level: 'info' },
+            { timestamp: '@DateTime.Now.AddMinutes(-22).ToString("yyyy-MM-dd HH:mm:ss")', message: 'Profile mới được thêm: Black Myth: Wukong', level: 'success' },
+            { timestamp: '@DateTime.Now.AddMinutes(-17).ToString("yyyy-MM-dd HH:mm:ss")', message: 'Profile "Counter-Strike 2" đã được cập nhật', level: 'success' },
+            { timestamp: '@DateTime.Now.AddMinutes(-10).ToString("yyyy-MM-dd HH:mm:ss")', message: 'Client 192.168.1.150 đã kết nối', level: 'info' },
+            { timestamp: '@DateTime.Now.AddMinutes(-5).ToString("yyyy-MM-dd HH:mm:ss")', message: 'Client 192.168.1.150 đã ngắt kết nối', level: 'info' }
         ];
         
         const logWindow = document.getElementById('activityLog');
         logWindow.innerHTML = '';
         
         logEntries.forEach(entry => {
-            logWindow.innerHTML += `<div>[${entry.timestamp}] ${entry.message}</div>`;
+            let logClass = '';
+            let icon = 'bi-info-circle';
+            
+            if (entry.level === 'success') {
+                logClass = 'text-success';
+                icon = 'bi-check-circle';
+            } else if (entry.level === 'warning') {
+                logClass = 'text-warning';
+                icon = 'bi-exclamation-triangle';
+            } else if (entry.level === 'error') {
+                logClass = 'text-danger';
+                icon = 'bi-exclamation-circle';
+            } else {
+                logClass = 'text-info';
+            }
+            
+            logWindow.innerHTML += `
+                <div class="log-entry mb-1">
+                    <span class="text-muted">[${entry.timestamp}]</span>
+                    <i class="bi ${icon} ${logClass} me-1"></i>
+                    <span class="${logClass}">${entry.message}</span>
+                </div>
+            `;
         });
+    }
+    
+    // Backup tất cả profiles
+    function backupAllProfiles() {
+        const btn = document.getElementById('backupAllBtn');
+        const originalText = btn.innerHTML;
+        btn.innerHTML = `
+            <div>
+                <span class="spinner-border spinner-border-sm" role="status"></span>
+                <span>Đang backup...</span>
+            </div>
+        `;
+        btn.disabled = true;
+        
+        fetch('/api/appprofiles/backup')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Hiển thị thông báo thành công
+                    const toast = document.createElement('div');
+                    toast.classList.add('position-fixed', 'bottom-0', 'end-0', 'p-3');
+                    toast.style.zIndex = 1070;
+                    
+                    toast.innerHTML = `
+                        <div class="toast align-items-center text-white bg-success" role="alert" aria-live="assertive" aria-atomic="true">
+                            <div class="d-flex">
+                                <div class="toast-body">
+                                    <i class="bi bi-check-circle-fill me-2"></i>
+                                    ${data.message}
+                                </div>
+                                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+                            </div>
+                        </div>
+                    `;
+                    
+                    document.body.appendChild(toast);
+                    const toastEl = new bootstrap.Toast(toast.querySelector('.toast'), { delay: 5000 });
+                    toastEl.show();
+                } else {
+                    alert(`Lỗi: ${data.message}`);
+                }
+            })
+            .catch(error => {
+                console.error('Lỗi khi backup profiles:', error);
+                alert('Đã xảy ra lỗi khi backup profiles');
+            })
+            .finally(() => {
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            });
     }
     
     document.addEventListener('DOMContentLoaded', function() {
         loadProfileCount();
         loadActivityLog();
+        
+        // Thêm sự kiện cho nút backup
+        document.getElementById('backupAllBtn').addEventListener('click', backupAllProfiles);
         
         // Tự động làm mới dữ liệu mỗi 30 giây
         setInterval(function() {
@@ -112,4 +313,24 @@
         }, 30000);
     });
 </script>
+
+<style>
+    .list-group-item {
+        transition: all 0.2s ease;
+    }
+    
+    .list-group-item:hover {
+        background-color: #2a2a2a !important;
+        transform: translateX(5px);
+    }
+    
+    .log-window {
+        max-height: 300px;
+    }
+    
+    .log-entry {
+        font-family: 'Consolas', monospace;
+        font-size: 0.9rem;
+    }
+</style>
 }
