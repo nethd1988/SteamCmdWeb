@@ -7,6 +7,7 @@ using SteamCmdWeb;
 using System.IO;
 using System.Text.Json.Serialization;
 using System.Text.Json;
+using System;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -131,18 +132,18 @@ app.Use(async (context, next) =>
     catch (Exception ex)
     {
         app.Logger.LogError(ex, "Lỗi không xử lý trong pipeline HTTP: {Message}", ex.Message);
-        
+
         if (!context.Response.HasStarted)
         {
             context.Response.StatusCode = 500;
             context.Response.ContentType = "application/json";
-            
-            var error = new 
+
+            var error = new
             {
                 Error = "Lỗi server",
                 Message = "Đã xảy ra lỗi khi xử lý yêu cầu. Vui lòng thử lại sau."
             };
-            
+
             await context.Response.WriteAsJsonAsync(error);
         }
     }

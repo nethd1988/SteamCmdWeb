@@ -36,7 +36,7 @@ namespace SteamCmdWeb.Controllers
             try
             {
                 var profiles = _profileManager.GetAllProfiles();
-                
+
                 if (decrypt)
                 {
                     // Thêm thông tin giải mã (chỉ để hiển thị, không lưu trong profiles)
@@ -49,10 +49,10 @@ namespace SteamCmdWeb.Controllers
                             Password = _decryptionService.DecryptString(p.SteamPassword)
                         }
                     }).ToList();
-                    
+
                     return Ok(enhancedProfiles);
                 }
-                
+
                 return Ok(profiles);
             }
             catch (Exception ex)
@@ -61,7 +61,7 @@ namespace SteamCmdWeb.Controllers
                 return StatusCode(500, new { Error = "Lỗi khi lấy danh sách profiles", Message = ex.Message });
             }
         }
-        
+
         /// <summary>
         /// Lấy profile theo ID với tùy chọn giải mã
         /// </summary>
@@ -75,7 +75,7 @@ namespace SteamCmdWeb.Controllers
                 {
                     return NotFound(new { Error = "Không tìm thấy profile" });
                 }
-                
+
                 if (decrypt && !profile.AnonymousLogin)
                 {
                     var result = new
@@ -87,10 +87,10 @@ namespace SteamCmdWeb.Controllers
                             Password = _decryptionService.DecryptString(profile.SteamPassword)
                         }
                     };
-                    
+
                     return Ok(result);
                 }
-                
+
                 return Ok(profile);
             }
             catch (Exception ex)
@@ -99,7 +99,7 @@ namespace SteamCmdWeb.Controllers
                 return StatusCode(500, new { Error = "Lỗi khi lấy thông tin profile", Message = ex.Message });
             }
         }
-        
+
         /// <summary>
         /// Lấy thông tin đăng nhập đã giải mã cho profile
         /// </summary>
@@ -113,26 +113,26 @@ namespace SteamCmdWeb.Controllers
                 {
                     return NotFound(new { Error = "Không tìm thấy profile" });
                 }
-                
+
                 // Kiểm tra nếu người dùng đang kết nối từ mạng nội bộ
                 var isLocalRequest = Request.HttpContext.Connection.RemoteIpAddress?.IsLoopback ?? false;
                 if (!isLocalRequest)
                 {
-                    _logger.LogWarning("Yêu cầu truy cập thông tin đăng nhập từ IP không an toàn: {IP}", 
+                    _logger.LogWarning("Yêu cầu truy cập thông tin đăng nhập từ IP không an toàn: {IP}",
                         Request.HttpContext.Connection.RemoteIpAddress);
                 }
-                
+
                 if (profile.AnonymousLogin)
                 {
                     return Ok(new { Message = "Profile này sử dụng đăng nhập ẩn danh (không có thông tin đăng nhập)" });
                 }
-                
+
                 var credentials = new
                 {
                     Username = _decryptionService.DecryptString(profile.SteamUsername),
                     Password = _decryptionService.DecryptString(profile.SteamPassword)
                 };
-                
+
                 return Ok(credentials);
             }
             catch (Exception ex)
@@ -141,7 +141,7 @@ namespace SteamCmdWeb.Controllers
                 return StatusCode(500, new { Error = "Lỗi khi giải mã thông tin đăng nhập", Message = ex.Message });
             }
         }
-        
+
         /// <summary>
         /// Tạo profile mới với mã hóa đúng cách
         /// </summary>
@@ -154,13 +154,13 @@ namespace SteamCmdWeb.Controllers
                 {
                     return BadRequest(new { Error = "Dữ liệu profile không hợp lệ" });
                 }
-                
+
                 // Xác thực các trường bắt buộc
                 if (string.IsNullOrEmpty(profile.Name) || string.IsNullOrEmpty(profile.AppID))
                 {
                     return BadRequest(new { Error = "Tên và AppID là bắt buộc" });
                 }
-                
+
                 // Mã hóa thông tin đăng nhập nếu không phải đăng nhập ẩn danh
                 if (!profile.AnonymousLogin)
                 {
@@ -168,20 +168,20 @@ namespace SteamCmdWeb.Controllers
                     {
                         profile.SteamUsername = _decryptionService.EncryptString(profile.SteamUsername);
                     }
-                    
+
                     if (!string.IsNullOrEmpty(profile.SteamPassword))
                     {
                         profile.SteamPassword = _decryptionService.EncryptString(profile.SteamPassword);
                     }
                 }
-                
+
                 // Thiết lập giá trị mặc định
                 profile.Status = "Ready";
                 profile.StartTime = DateTime.Now;
                 profile.StopTime = DateTime.Now;
                 profile.LastRun = DateTime.UtcNow;
                 profile.Pid = 0;
-                
+
                 var result = _profileManager.AddProfile(profile);
                 return CreatedAtAction(nameof(GetProfileById), new { id = result.Id }, result);
             }
@@ -191,7 +191,7 @@ namespace SteamCmdWeb.Controllers
                 return StatusCode(500, new { Error = "Lỗi khi tạo profile", Message = ex.Message });
             }
         }
-        
+
         /// <summary>
         /// Cập nhật profile với mã hóa đúng cách
         /// </summary>
@@ -204,19 +204,19 @@ namespace SteamCmdWeb.Controllers
                 {
                     return BadRequest(new { Error = "Dữ liệu profile không hợp lệ hoặc ID không khớp" });
                 }
-                
+
                 var existingProfile = _profileManager.GetProfileById(id);
                 if (existingProfile == null)
                 {
                     return NotFound(new { Error = "Không tìm thấy profile" });
                 }
-                
+
                 // Mã hóa thông tin đăng nhập nếu không phải đăng nhập ẩn danh và thông tin được cập nhật
                 if (!profile.AnonymousLogin)
                 {
                     // Chỉ mã hóa nếu chuỗi có vẻ là văn bản thô (không phải đã mã hóa)
-                    if (!string.IsNullOrEmpty(profile.SteamUsername) && 
-                        !profile.SteamUsername.Contains("/") && 
+                    if (!string.IsNullOrEmpty(profile.SteamUsername) &&
+                        !profile.SteamUsername.Contains("/") &&
                         !profile.SteamUsername.Contains("="))
                     {
                         profile.SteamUsername = _decryptionService.EncryptString(profile.SteamUsername);
@@ -226,9 +226,9 @@ namespace SteamCmdWeb.Controllers
                         // Giữ nguyên username cũ nếu không được cung cấp
                         profile.SteamUsername = existingProfile.SteamUsername;
                     }
-                    
-                    if (!string.IsNullOrEmpty(profile.SteamPassword) && 
-                        !profile.SteamPassword.Contains("/") && 
+
+                    if (!string.IsNullOrEmpty(profile.SteamPassword) &&
+                        !profile.SteamPassword.Contains("/") &&
                         !profile.SteamPassword.Contains("="))
                     {
                         profile.SteamPassword = _decryptionService.EncryptString(profile.SteamPassword);
@@ -239,19 +239,19 @@ namespace SteamCmdWeb.Controllers
                         profile.SteamPassword = existingProfile.SteamPassword;
                     }
                 }
-                
+
                 // Đảm bảo cập nhật đúng thông tin
                 if (string.IsNullOrEmpty(profile.Status))
                 {
                     profile.Status = existingProfile.Status;
                 }
-                
+
                 bool updated = _profileManager.UpdateProfile(profile);
                 if (!updated)
                 {
                     return NotFound(new { Error = "Không thể cập nhật profile" });
                 }
-                
+
                 return Ok(profile);
             }
             catch (Exception ex)
@@ -260,7 +260,7 @@ namespace SteamCmdWeb.Controllers
                 return StatusCode(500, new { Error = "Lỗi khi cập nhật profile", Message = ex.Message });
             }
         }
-        
+
         /// <summary>
         /// Xóa profile
         /// </summary>
@@ -274,13 +274,13 @@ namespace SteamCmdWeb.Controllers
                 {
                     return NotFound(new { Error = "Không tìm thấy profile" });
                 }
-                
+
                 bool deleted = _profileManager.DeleteProfile(id);
                 if (!deleted)
                 {
                     return NotFound(new { Error = "Không thể xóa profile" });
                 }
-                
+
                 return NoContent();
             }
             catch (Exception ex)
@@ -289,7 +289,7 @@ namespace SteamCmdWeb.Controllers
                 return StatusCode(500, new { Error = "Lỗi khi xóa profile", Message = ex.Message });
             }
         }
-        
+
         /// <summary>
         /// Tạo bản sao profile
         /// </summary>
@@ -303,7 +303,7 @@ namespace SteamCmdWeb.Controllers
                 {
                     return NotFound(new { Error = "Không tìm thấy profile" });
                 }
-                
+
                 // Tạo bản sao của profile
                 var copy = new ClientProfile
                 {
@@ -323,7 +323,7 @@ namespace SteamCmdWeb.Controllers
                     LastRun = DateTime.UtcNow,
                     Pid = 0
                 };
-                
+
                 var result = _profileManager.AddProfile(copy);
                 return CreatedAtAction(nameof(GetProfileById), new { id = result.Id }, result);
             }

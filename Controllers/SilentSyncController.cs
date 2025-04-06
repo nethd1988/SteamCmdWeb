@@ -187,11 +187,70 @@ namespace SteamCmdWeb.Controllers
                 _logger.LogInformation("Nhận request lấy status sync");
 
                 var status = _silentSyncService.GetSyncStatus();
+
+                // Sửa cách xử lý với các giá trị null DateTime
+                if (status is Dictionary<string, object> statusDict)
+                {
+                    // Thay thế các giá trị DateTime? null bằng null JSON
+                    foreach (var key in statusDict.Keys.ToList())
+                    {
+                        if (statusDict[key] is DateTime dateTime && dateTime == DateTime.MinValue)
+                        {
+                            statusDict[key] = null;
+                        }
+                    }
+                }
+
                 return Ok(status);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Lỗi khi lấy thông tin sync");
+                return StatusCode(500, new { Success = false, Message = $"Lỗi: {ex.Message}" });
+            }
+        }
+
+        /// <summary>
+        /// Trả về các thông tin về server đồng bộ
+        /// </summary>
+        [HttpGet("info")]
+        public IActionResult GetSyncServerInfo()
+        {
+            try
+            {
+                _logger.LogInformation("Nhận request lấy thông tin server sync");
+
+                // Lấy thông tin cơ bản về server đồng bộ
+                var serverInfo = new
+                {
+                    ServerVersion = "1.0.0",
+                    ApiVersion = "1.0",
+                    SupportedMethods = new[] { "profile", "batch", "full" },
+                    MaxBatchSize = 100,
+                    MaxRequestSize = 50 * 1024 * 1024, // 50MB
+                    ServerTime = DateTime.Now,
+                    ServerTimeUtc = DateTime.UtcNow,
+                    RequiresAuthentication = true,
+                    Features = new
+                    {
+                        BatchProcessing = true,
+                        SilentSync = true,
+                        HttpSync = true,
+                        TcpSync = true,
+                        Encryption = true,
+                        DataCompression = false
+                    }
+                };
+
+                return Ok(new
+                {
+                    Success = true,
+                    Info = serverInfo
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi lấy thông tin server sync");
                 return StatusCode(500, new { Success = false, Message = $"Lỗi: {ex.Message}" });
             }
         }
