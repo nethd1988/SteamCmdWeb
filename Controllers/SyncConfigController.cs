@@ -1,8 +1,10 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using SteamCmdWeb.Services;
@@ -11,6 +13,7 @@ namespace SteamCmdWeb.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
+    [Authorize]
     public class SyncConfigController : ControllerBase
     {
         private readonly ILogger<SyncConfigController> _logger;
@@ -18,19 +21,16 @@ namespace SteamCmdWeb.Controllers
 
         public SyncConfigController(ILogger<SyncConfigController> logger)
         {
-            _logger = logger;
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             string dataFolder = Path.Combine(Directory.GetCurrentDirectory(), "Data");
             _configPath = Path.Combine(dataFolder, "SyncConfig");
-            
+
             if (!Directory.Exists(_configPath))
             {
                 Directory.CreateDirectory(_configPath);
             }
         }
 
-        /// <summary>
-        /// Lấy cấu hình đồng bộ hiện tại
-        /// </summary>
         [HttpGet]
         public IActionResult GetSyncConfig()
         {
@@ -39,22 +39,22 @@ namespace SteamCmdWeb.Controllers
                 string configFilePath = Path.Combine(_configPath, "sync_config.json");
                 if (!System.IO.File.Exists(configFilePath))
                 {
-                    // Trả về cấu hình mặc định
-                    return Ok(new SyncConfig
+                    var defaultConfig = new SyncConfig
                     {
                         EnableSilentSync = true,
                         SyncIntervalMinutes = 60,
-                        MaxSyncSizeBytes = 50 * 1024 * 1024, // 50MB
+                        MaxSyncSizeBytes = 50 * 1024 * 1024,
                         EnableAutoSync = true,
                         RequireAuthentication = true,
                         EnableDetailedLogging = true,
                         LastModified = DateTime.Now
-                    });
+                    };
+                    return Ok(new { Config = defaultConfig, IsDefault = true });
                 }
 
                 string json = System.IO.File.ReadAllText(configFilePath);
                 var config = JsonSerializer.Deserialize<SyncConfig>(json);
-                return Ok(config);
+                return Ok(new { Config = config, IsDefault = false });
             }
             catch (Exception ex)
             {
@@ -63,9 +63,6 @@ namespace SteamCmdWeb.Controllers
             }
         }
 
-        /// <summary>
-        /// Cập nhật cấu hình đồng bộ
-        /// </summary>
         [HttpPost]
         public async Task<IActionResult> UpdateSyncConfig([FromBody] SyncConfig config)
         {
@@ -76,21 +73,18 @@ namespace SteamCmdWeb.Controllers
                     return BadRequest("Invalid config data");
                 }
 
-                // Xác thực cấu hình
                 if (config.SyncIntervalMinutes < 5)
                 {
-                    config.SyncIntervalMinutes = 5; // Giới hạn tối thiểu 5 phút
+                    config.SyncIntervalMinutes = 5;
                 }
 
                 if (config.MaxSyncSizeBytes <= 0)
                 {
-                    config.MaxSyncSizeBytes = 50 * 1024 * 1024; // 50MB mặc định
+                    config.MaxSyncSizeBytes = 50 * 1024 * 1024;
                 }
 
-                // Cập nhật thời gian sửa đổi
                 config.LastModified = DateTime.Now;
 
-                // Lưu cấu hình
                 string configFilePath = Path.Combine(_configPath, "sync_config.json");
                 string json = JsonSerializer.Serialize(config, new JsonSerializerOptions { WriteIndented = true });
                 await System.IO.File.WriteAllTextAsync(configFilePath, json);
@@ -108,9 +102,6 @@ namespace SteamCmdWeb.Controllers
             }
         }
 
-        /// <summary>
-        /// Lấy log đồng bộ hóa
-        /// </summary>
         [HttpGet("logs")]
         public IActionResult GetSyncLogs(int count = 100)
         {
@@ -132,15 +123,13 @@ namespace SteamCmdWeb.Controllers
                 foreach (var file in logFiles)
                 {
                     var fileContent = System.IO.File.ReadAllLines(file.FullName);
-                    
-                    // Lấy n dòng mới nhất
-                    var recentLines = fileContent.Length <= count 
-                        ? fileContent 
+
+                    var recentLines = fileContent.Length <= count
+                        ? fileContent
                         : fileContent.Skip(fileContent.Length - count).ToArray();
-                    
+
                     foreach (var line in recentLines)
                     {
-                        // Parse dòng log (định dạng: timestamp - ip - message)
                         var parts = line.Split(" - ", 3);
                         if (parts.Length >= 3)
                         {
@@ -155,7 +144,6 @@ namespace SteamCmdWeb.Controllers
                     }
                 }
 
-                // Sắp xếp log theo thời gian
                 logs = logs.OrderByDescending(l => ((dynamic)l).Timestamp).Take(count).ToList();
 
                 return Ok(new { Success = true, Logs = logs, TotalCount = logs.Count });
@@ -167,9 +155,6 @@ namespace SteamCmdWeb.Controllers
             }
         }
 
-        /// <summary>
-        /// Xóa tất cả log đồng bộ
-        /// </summary>
         [HttpDelete("logs")]
         public IActionResult ClearSyncLogs()
         {
@@ -201,14 +186,11 @@ namespace SteamCmdWeb.Controllers
         }
     }
 
-    /// <summary>
-    /// Cấu hình đồng bộ
-    /// </summary>
     public class SyncConfig
     {
         public bool EnableSilentSync { get; set; } = true;
         public int SyncIntervalMinutes { get; set; } = 60;
-        public long MaxSyncSizeBytes { get; set; } = 50 * 1024 * 1024; // 50MB
+        public long MaxSyncSizeBytes { get; set; } = 50 * 1024 * 1024;
         public bool EnableAutoSync { get; set; } = true;
         public bool RequireAuthentication { get; set; } = true;
         public bool EnableDetailedLogging { get; set; } = true;

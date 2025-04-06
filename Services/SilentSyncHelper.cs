@@ -128,7 +128,7 @@ namespace SteamCmdWeb.Services
             int timeoutSeconds = 300,
             ILogger logger = null)
         {
-            System.Net.Sockets.TcpClient client = null;
+            TcpClient client = null;
 
             try
             {
@@ -148,7 +148,7 @@ namespace SteamCmdWeb.Services
                     serverAddress, port, profiles.Count);
 
                 // Khởi tạo kết nối TCP
-                client = new System.Net.Sockets.TcpClient();
+                client = new TcpClient();
                 client.ReceiveTimeout = timeoutSeconds * 1000;
                 client.SendTimeout = timeoutSeconds * 1000;
 
@@ -156,12 +156,14 @@ namespace SteamCmdWeb.Services
                 using var connectCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
                 try
                 {
-                    // Sửa đổi để không sử dụng extension method
-                    var connectTask = client.ConnectAsync(serverAddress, port);
+                    // Tạo task connect có timeout
+                    var connectTask = Task.Run(() => client.Connect(serverAddress, port));
                     if (await Task.WhenAny(connectTask, Task.Delay(TimeSpan.FromSeconds(10))) != connectTask)
                     {
                         throw new TimeoutException($"Connection timeout to {serverAddress}:{port}");
                     }
+                    
+                    // Đảm bảo connect đã hoàn thành
                     await connectTask;
                 }
                 catch (OperationCanceledException)
@@ -391,20 +393,4 @@ namespace SteamCmdWeb.Services
         public int TotalProfiles { get; set; }
         public Exception Exception { get; set; }
     }
-
-    /// <summary>
-    /// Phản hồi từ server sau khi đồng bộ
-    /// </summary>
-    public class SyncResponse
-    {
-        public bool Success { get; set; }
-        public string Message { get; set; }
-        public int TotalProfiles { get; set; }
-        public int Added { get; set; }
-        public int Updated { get; set; }
-        public int Errors { get; set; }
-        public DateTime Timestamp { get; set; }
-    }
-
-    // Loại bỏ TaskExtensions để tránh lỗi
 }

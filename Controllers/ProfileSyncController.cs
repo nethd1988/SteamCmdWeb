@@ -1,10 +1,10 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SteamCmdWeb.Models;
 using SteamCmdWeb.Services;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using System.Net;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 
@@ -12,22 +12,28 @@ namespace SteamCmdWeb.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
+    [Authorize]
     public class ProfileSyncController : ControllerBase
     {
         private readonly AppProfileManager _profileManager;
         private readonly ILogger<ProfileSyncController> _logger;
+        private readonly SilentSyncService _silentSyncService;
 
-        public ProfileSyncController(AppProfileManager profileManager, ILogger<ProfileSyncController> logger)
+        public ProfileSyncController(
+            AppProfileManager profileManager,
+            ILogger<ProfileSyncController> logger,
+            SilentSyncService silentSyncService)
         {
-            _profileManager = profileManager;
-            _logger = logger;
+            _profileManager = profileManager ?? throw new ArgumentNullException(nameof(profileManager));
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _silentSyncService = silentSyncService ?? throw new ArgumentNullException(nameof(silentSyncService));
         }
 
         /// <summary>
-        /// Nhận profile từ client và lưu vào hệ thống
+        /// Nhận một profile từ client và lưu vào hệ thống
         /// </summary>
         [HttpPost("receive")]
-        public IActionResult ReceiveProfile([FromBody] ClientProfile profile)
+        public async Task<IActionResult> ReceiveProfile([FromBody] ClientProfile profile)
         {
             try
             {
@@ -39,30 +45,17 @@ namespace SteamCmdWeb.Controllers
 
                 _logger.LogInformation("Received profile: {Name} (ID: {Id})", profile.Name, profile.Id);
 
-                // Kiểm tra xem profile đã tồn tại chưa
-                var existingProfile = _profileManager.GetProfileById(profile.Id);
-                
-                if (existingProfile == null)
+                string clientIp = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+
+                (bool success, string message) = await _silentSyncService.ReceiveProfileAsync(profile, clientIp);
+
+                if (success)
                 {
-                    // Thêm mới profile
-                    var result = _profileManager.AddProfile(profile);
-                    _logger.LogInformation("Added new profile: {Name} (ID: {Id})", result.Name, result.Id);
-                    return Ok(new { Success = true, Message = "Profile added successfully", ProfileId = result.Id });
+                    return Ok(new { Success = true, Message = "Profile added successfully", ProfileId = profile.Id });
                 }
                 else
                 {
-                    // Cập nhật profile hiện có
-                    bool updated = _profileManager.UpdateProfile(profile);
-                    if (updated)
-                    {
-                        _logger.LogInformation("Updated existing profile: {Name} (ID: {Id})", profile.Name, profile.Id);
-                        return Ok(new { Success = true, Message = "Profile updated successfully", ProfileId = profile.Id });
-                    }
-                    else
-                    {
-                        _logger.LogWarning("Failed to update profile: {Name} (ID: {Id})", profile.Name, profile.Id);
-                        return StatusCode(500, new { Success = false, Message = "Failed to update profile" });
-                    }
+                    return StatusCode(500, new { Success = false, Message = message });
                 }
             }
             catch (Exception ex)
@@ -76,7 +69,7 @@ namespace SteamCmdWeb.Controllers
         /// Nhận nhiều profile cùng lúc từ client
         /// </summary>
         [HttpPost("batch")]
-        public IActionResult ReceiveProfiles([FromBody] List<ClientProfile> profiles)
+        public async Task<IActionResult> ReceiveProfiles([FromBody] List<ClientProfile> profiles)
         {
             try
             {
@@ -85,46 +78,41 @@ namespace SteamCmdWeb.Controllers
                     _logger.LogWarning("Received empty or null profile batch");
                     return BadRequest("No profiles provided");
                 }
+                if (profiles.Count > 100)
+                {
+                    return BadRequest("Too many profiles in one request (max: 100)");
+                }
 
                 _logger.LogInformation("Received batch of {Count} profiles", profiles.Count);
 
-                int addedCount = 0;
-                int updatedCount = 0;
-                List<int> processedIds = new List<int>();
+                string clientIp = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
 
-                foreach (var profile in profiles)
+                (bool success, string message, int addedCount, int updatedCount, int errorCount, List<int> processedIds) =
+                    await _silentSyncService.ReceiveProfilesAsync(profiles, clientIp);
+
+                if (success)
                 {
-                    if (profile == null) continue;
-
-                    var existingProfile = _profileManager.GetProfileById(profile.Id);
-                    
-                    if (existingProfile == null)
+                    return Ok(new
                     {
-                        // Thêm mới profile
-                        var result = _profileManager.AddProfile(profile);
-                        processedIds.Add(result.Id);
-                        addedCount++;
-                    }
-                    else
-                    {
-                        // Cập nhật profile hiện có
-                        bool updated = _profileManager.UpdateProfile(profile);
-                        if (updated)
-                        {
-                            processedIds.Add(profile.Id);
-                            updatedCount++;
-                        }
-                    }
+                        Success = true,
+                        Message = message,
+                        ProfileIds = processedIds,
+                        Added = addedCount,
+                        Updated = updatedCount,
+                        Errors = errorCount
+                    });
                 }
-
-                _logger.LogInformation("Batch processing completed: Added {AddedCount}, Updated {UpdatedCount}", 
-                    addedCount, updatedCount);
-
-                return Ok(new { 
-                    Success = true, 
-                    Message = $"Processed {addedCount + updatedCount} profiles (Added: {addedCount}, Updated: {updatedCount})",
-                    ProfileIds = processedIds
-                });
+                else
+                {
+                    return StatusCode(500, new
+                    {
+                        Success = false,
+                        Message = message,
+                        Added = addedCount,
+                        Updated = updatedCount,
+                        Errors = errorCount
+                    });
+                }
             }
             catch (Exception ex)
             {
@@ -147,63 +135,48 @@ namespace SteamCmdWeb.Controllers
                     return BadRequest("Invalid profiles data");
                 }
 
-                _logger.LogInformation("Starting profile sync from client {ClientId}. Profile count: {Count}", 
-                    clientId ?? "unknown", profiles.Count);
+                string clientIp = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+                clientId = clientId ?? clientIp ?? "unknown";
 
-                // Lưu trữ dữ liệu đồng bộ để phân tích
-                string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
-                string syncId = Guid.NewGuid().ToString().Substring(0, 8);
-                
-                // Xử lý từng profile
-                int addedCount = 0;
-                int updatedCount = 0;
-                int errorCount = 0;
-                
-                foreach (var profile in profiles)
+                _logger.LogInformation("Starting profile sync from client {ClientId}. Profile count: {Count}", clientId, profiles.Count);
+
+                string jsonProfiles = JsonSerializer.Serialize(profiles);
+
+                (bool success, string message, int totalCount, int addedCount, int updatedCount, int errorCount) =
+                    await _silentSyncService.ProcessFullSyncAsync(jsonProfiles, clientIp);
+
+                if (success)
                 {
-                    try
+                    return Ok(new
                     {
-                        if (profile == null) continue;
-                        
-                        var existingProfile = _profileManager.GetProfileById(profile.Id);
-                        
-                        if (existingProfile == null)
+                        Success = true,
+                        SyncId = Guid.NewGuid().ToString().Substring(0, 8),
+                        Message = message,
+                        Details = new
                         {
-                            // Thêm mới profile
-                            _profileManager.AddProfile(profile);
-                            addedCount++;
+                            Added = addedCount,
+                            Updated = updatedCount,
+                            Errors = errorCount,
+                            Total = totalCount,
+                            Timestamp = DateTime.Now
                         }
-                        else
-                        {
-                            // Cập nhật profile hiện có
-                            bool updated = _profileManager.UpdateProfile(profile);
-                            if (updated)
-                            {
-                                updatedCount++;
-                            }
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "Error processing profile {Id} during sync", profile?.Id);
-                        errorCount++;
-                    }
+                    });
                 }
-
-                _logger.LogInformation("Sync completed: Added {AddedCount}, Updated {UpdatedCount}, Errors {ErrorCount}", 
-                    addedCount, updatedCount, errorCount);
-
-                return Ok(new { 
-                    Success = true, 
-                    SyncId = syncId,
-                    Message = $"Sync completed successfully. Added: {addedCount}, Updated: {updatedCount}, Errors: {errorCount}",
-                    Details = new {
-                        Added = addedCount,
-                        Updated = updatedCount,
-                        Errors = errorCount,
-                        Timestamp = DateTime.Now
-                    }
-                });
+                else
+                {
+                    return StatusCode(500, new
+                    {
+                        Success = false,
+                        Message = message,
+                        Details = new
+                        {
+                            Added = addedCount,
+                            Updated = updatedCount,
+                            Errors = errorCount,
+                            Total = totalCount
+                        }
+                    });
+                }
             }
             catch (Exception ex)
             {
@@ -216,8 +189,8 @@ namespace SteamCmdWeb.Controllers
         /// Nhận thông tin về các profile từ một server từ xa
         /// </summary>
         [HttpGet("sync")]
-        public async Task<IActionResult> SyncFromRemoteServer(
-            [FromQuery] string targetServer, 
+        public IActionResult SyncFromRemoteServer(
+            [FromQuery] string targetServer,
             [FromQuery] int port = 61188,
             [FromQuery] bool force = false)
         {
@@ -230,14 +203,13 @@ namespace SteamCmdWeb.Controllers
 
                 _logger.LogInformation("Initiating sync from remote server: {Server}:{Port}", targetServer, port);
 
-                // TODO: Implement the actual TCP connection to the remote server
-                // This would use similar code to what's in your TcpClientService
-                
-                // For now, we'll return a placeholder response
-                return Ok(new {
+                // TODO: Thêm logic thực tế để kết nối TCP với server từ xa
+                return Ok(new
+                {
                     Success = true,
                     Message = $"Sync from {targetServer}:{port} requested. Implementation in progress.",
-                    Details = new {
+                    Details = new
+                    {
                         TargetServer = targetServer,
                         Port = port,
                         Force = force,

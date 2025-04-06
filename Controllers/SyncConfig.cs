@@ -1,71 +1,96 @@
 using System;
-using System.Collections.Generic;
 
 namespace SteamCmdWeb.Models
 {
     /// <summary>
-    /// Cấu hình đồng bộ hệ thống
+    /// Phản hồi từ server sau khi đồng bộ dữ liệu
     /// </summary>
-    public class SyncConfig
+    public class SyncResponse
     {
         /// <summary>
-        /// Bật/tắt tính năng đồng bộ âm thầm
+        /// Kết quả đồng bộ hóa (thành công hay thất bại)
         /// </summary>
-        public bool EnableSilentSync { get; set; } = true;
+        public bool Success { get; set; }
         
         /// <summary>
-        /// Chu kỳ đồng bộ tự động (phút)
+        /// Thông báo từ server
         /// </summary>
-        public int SyncIntervalMinutes { get; set; } = 60;
+        public string Message { get; set; }
         
         /// <summary>
-        /// Kích thước tối đa cho đồng bộ (byte)
+        /// Tổng số profile được xử lý
         /// </summary>
-        public long MaxSyncSizeBytes { get; set; } = 50 * 1024 * 1024; // 50MB
+        public int TotalProfiles { get; set; }
         
         /// <summary>
-        /// Bật/tắt tính năng đồng bộ tự động
+        /// Số profile được thêm mới
         /// </summary>
-        public bool EnableAutoSync { get; set; } = true;
+        public int Added { get; set; }
         
         /// <summary>
-        /// Yêu cầu xác thực khi đồng bộ
+        /// Số profile được cập nhật
         /// </summary>
-        public bool RequireAuthentication { get; set; } = true;
+        public int Updated { get; set; }
         
         /// <summary>
-        /// Bật/tắt log chi tiết
+        /// Số profile gặp lỗi
         /// </summary>
-        public bool EnableDetailedLogging { get; set; } = true;
+        public int Errors { get; set; }
         
         /// <summary>
-        /// Thời gian cập nhật cuối
+        /// Thời gian hoàn thành đồng bộ
         /// </summary>
-        public DateTime LastModified { get; set; } = DateTime.Now;
+        public DateTime Timestamp { get; set; }
+    }
+    
+    /// <summary>
+    /// Phản hồi thống kê về đồng bộ (sử dụng cho giao diện)
+    /// </summary>
+    public class SyncStatusResponse
+    {
+        /// <summary>
+        /// Thời gian đồng bộ cuối cùng
+        /// </summary>
+        public DateTime LastSyncTime { get; set; }
         
         /// <summary>
-        /// Danh sách IP được phép truy cập
+        /// Tổng số lần đồng bộ
         /// </summary>
-        public List<string> AllowedIpAddresses { get; set; } = new List<string>();
+        public int TotalSyncCount { get; set; }
         
         /// <summary>
-        /// Số lượng yêu cầu đồng bộ tối đa trong 1 giờ
+        /// Số lần đồng bộ thành công
         /// </summary>
-        public int MaxRequestsPerHour { get; set; } = 60;
+        public int SuccessSyncCount { get; set; }
         
         /// <summary>
-        /// Giới hạn kích thước batch đồng bộ
+        /// Số lần đồng bộ thất bại
         /// </summary>
-        public int MaxBatchSize { get; set; } = 100;
+        public int FailedSyncCount { get; set; }
         
         /// <summary>
-        /// Bật/tắt sao lưu tự động trước khi đồng bộ
+        /// Số profile được thêm mới trong lần đồng bộ cuối
         /// </summary>
-        public bool EnableAutoBackup { get; set; } = true;
+        public int LastSyncAddedCount { get; set; }
         
         /// <summary>
-        /// Bật/tắt kiểm tra trùng lặp
+        /// Số profile được cập nhật trong lần đồng bộ cuối
         /// </summary>
-        public bool EnableDuplicateCheck { get; set; } = true;
+        public int LastSyncUpdatedCount { get; set; }
+        
+        /// <summary>
+        /// Số profile gặp lỗi trong lần đồng bộ cuối
+        /// </summary>
+        public int LastSyncErrorCount { get; set; }
+        
+        /// <summary>
+        /// Trạng thái đồng bộ có được bật không
+        /// </summary>
+        public bool SyncEnabled { get; set; }
+        
+        /// <summary>
+        /// Thời gian hiện tại của server
+        /// </summary>
+        public DateTime CurrentTime { get; set; }
     }
 }

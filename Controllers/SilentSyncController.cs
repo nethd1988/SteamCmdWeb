@@ -1,18 +1,20 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SteamCmdWeb.Models;
 using SteamCmdWeb.Services;
 using System;
 using System.Collections.Generic;
-using System.Threading.Tasks;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 
 namespace SteamCmdWeb.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
+    [Authorize]
     public class SilentSyncController : ControllerBase
     {
         private readonly AppProfileManager _profileManager;
@@ -24,14 +26,11 @@ namespace SteamCmdWeb.Controllers
             ILogger<SilentSyncController> logger,
             SilentSyncService silentSyncService)
         {
-            _profileManager = profileManager;
-            _logger = logger;
-            _silentSyncService = silentSyncService;
+            _profileManager = profileManager ?? throw new ArgumentNullException(nameof(profileManager));
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _silentSyncService = silentSyncService ?? throw new ArgumentNullException(nameof(silentSyncService));
         }
 
-        /// <summary>
-        /// API để nhận một profile từ client một cách âm thầm
-        /// </summary>
         [HttpPost("profile")]
         public async Task<IActionResult> ReceiveProfile([FromBody] ClientProfile profile)
         {
@@ -47,7 +46,7 @@ namespace SteamCmdWeb.Controllers
                     return BadRequest(new { Success = false, Message = "Dữ liệu profile không hợp lệ" });
                 }
 
-                var (success, message) = await _silentSyncService.ReceiveProfileAsync(profile, clientIp);
+                (bool success, string message) = await _silentSyncService.ReceiveProfileAsync(profile, clientIp);
 
                 if (success)
                 {
@@ -65,9 +64,6 @@ namespace SteamCmdWeb.Controllers
             }
         }
 
-        /// <summary>
-        /// API để nhận nhiều profile từ client một cách âm thầm
-        /// </summary>
         [HttpPost("batch")]
         public async Task<IActionResult> ReceiveProfileBatch([FromBody] List<ClientProfile> profiles)
         {
@@ -75,16 +71,19 @@ namespace SteamCmdWeb.Controllers
 
             try
             {
-                _logger.LogInformation("Nhận request SilentSync/Batch từ IP: {ClientIp}, count: {Count}",
-                    clientIp, profiles?.Count ?? 0);
+                _logger.LogInformation("Nhận request SilentSync/Batch từ IP: {ClientIp}, count: {Count}", clientIp, profiles?.Count ?? 0);
 
                 if (profiles == null || profiles.Count == 0)
                 {
                     _logger.LogWarning("Nhận batch profiles trống từ IP: {ClientIp}", clientIp);
                     return BadRequest(new { Success = false, Message = "Không có profiles để xử lý" });
                 }
+                if (profiles.Count > 100)
+                {
+                    return BadRequest("Too many profiles in one request (max: 100)");
+                }
 
-                var (success, message, added, updated, errors, processedIds) =
+                (bool success, string message, int added, int updated, int errors, List<int> processedIds) =
                     await _silentSyncService.ReceiveProfilesAsync(profiles, clientIp);
 
                 if (success)
@@ -118,9 +117,6 @@ namespace SteamCmdWeb.Controllers
             }
         }
 
-        /// <summary>
-        /// API để nhận full sync từ client
-        /// </summary>
         [HttpPost("full")]
         public async Task<IActionResult> FullSync()
         {
@@ -130,7 +126,6 @@ namespace SteamCmdWeb.Controllers
             {
                 _logger.LogInformation("Nhận request SilentSync/Full từ IP: {ClientIp}", clientIp);
 
-                // Đọc raw JSON từ body request
                 using var reader = new StreamReader(Request.Body);
                 string requestBody = await reader.ReadToEndAsync();
 
@@ -140,7 +135,7 @@ namespace SteamCmdWeb.Controllers
                     return BadRequest(new { Success = false, Message = "Body rỗng" });
                 }
 
-                var (success, message, totalProfiles, added, updated, errors) =
+                (bool success, string message, int totalProfiles, int added, int updated, int errors) =
                     await _silentSyncService.ProcessFullSyncAsync(requestBody, clientIp);
 
                 if (success)
@@ -176,9 +171,6 @@ namespace SteamCmdWeb.Controllers
             }
         }
 
-        /// <summary>
-        /// Lấy thông tin về tình trạng đồng bộ hóa
-        /// </summary>
         [HttpGet("status")]
         public IActionResult GetSyncStatus()
         {
@@ -188,10 +180,8 @@ namespace SteamCmdWeb.Controllers
 
                 var status = _silentSyncService.GetSyncStatus();
 
-                // Sửa cách xử lý với các giá trị null DateTime
                 if (status is Dictionary<string, object> statusDict)
                 {
-                    // Thay thế các giá trị DateTime? null bằng null JSON
                     foreach (var key in statusDict.Keys.ToList())
                     {
                         if (statusDict[key] is DateTime dateTime && dateTime == DateTime.MinValue)
@@ -210,9 +200,6 @@ namespace SteamCmdWeb.Controllers
             }
         }
 
-        /// <summary>
-        /// Trả về các thông tin về server đồng bộ
-        /// </summary>
         [HttpGet("info")]
         public IActionResult GetSyncServerInfo()
         {
@@ -220,7 +207,6 @@ namespace SteamCmdWeb.Controllers
             {
                 _logger.LogInformation("Nhận request lấy thông tin server sync");
 
-                // Lấy thông tin cơ bản về server đồng bộ
                 var serverInfo = new
                 {
                     ServerVersion = "1.0.0",
@@ -242,11 +228,7 @@ namespace SteamCmdWeb.Controllers
                     }
                 };
 
-                return Ok(new
-                {
-                    Success = true,
-                    Info = serverInfo
-                });
+                return Ok(new { Success = true, Info = serverInfo });
             }
             catch (Exception ex)
             {

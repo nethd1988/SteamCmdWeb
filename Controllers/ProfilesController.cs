@@ -1,110 +1,143 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SteamCmdWeb.Models;
 using SteamCmdWeb.Services;
-using System.IO;
+using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 
 namespace SteamCmdWeb.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
+    [Authorize]
     public class ProfilesController : ControllerBase
     {
-        private readonly string _configFolder = Path.Combine(Directory.GetCurrentDirectory(), "Profiles");
         private readonly AppProfileManager _profileManager;
+        private readonly ILogger<ProfilesController> _logger;
 
-        public ProfilesController(AppProfileManager profileManager)
+        public ProfilesController(
+            AppProfileManager profileManager,
+            ILogger<ProfilesController> logger)
         {
-            _profileManager = profileManager;
+            _profileManager = profileManager ?? throw new ArgumentNullException(nameof(profileManager));
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
         [HttpGet]
         public IActionResult GetProfiles()
         {
-            var profiles = _profileManager.GetAllProfiles();
-            return Ok(profiles);
-        }
-
-        [HttpGet("legacy")]
-        public IActionResult GetLegacyProfiles()
-        {
-            string[] profiles = Directory.GetFiles(_configFolder, "*.profile");
-            if (profiles.Length == 0)
-                return Ok(new string[] { });
-            return Ok(profiles.Select(Path.GetFileNameWithoutExtension));
+            try
+            {
+                var profiles = _profileManager.GetAllProfiles();
+                _logger.LogInformation("GetProfiles: Trả về {Count} profiles", profiles.Count);
+                return Ok(profiles);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi lấy danh sách profiles");
+                return StatusCode(500, new { Error = "Lỗi khi lấy danh sách profiles", Message = ex.Message });
+            }
         }
 
         [HttpGet("{id:int}")]
         public IActionResult GetProfileById(int id)
         {
-            var profile = _profileManager.GetProfileById(id);
-            if (profile == null)
-                return NotFound("Profile not found");
-
-            return Ok(profile);
-        }
-
-        [HttpGet("name/{profileName}")]
-        public IActionResult GetProfileByName(string profileName)
-        {
-            var profile = _profileManager.GetProfileByName(profileName);
-            if (profile == null)
-                return NotFound("Profile not found");
-
-            return Ok(profile);
-        }
-
-        [HttpGet("legacy/{profileName}")]
-        public IActionResult GetLegacyProfileDetails(string profileName)
-        {
-            string filePath = Path.Combine(_configFolder, $"{profileName}.profile");
-            if (!System.IO.File.Exists(filePath))
-                return NotFound("Profile not found");
-
-            GameProfile profile = GameProfile.LoadFromFile(filePath);
-            return Ok(profile);
+            try
+            {
+                var profile = _profileManager.GetProfileById(id);
+                if (profile == null)
+                {
+                    _logger.LogWarning("GetProfileById: Không tìm thấy profile có ID {Id}", id);
+                    return NotFound(new { Error = "Không tìm thấy profile" });
+                }
+                return Ok(profile);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi lấy profile {ProfileId}", id);
+                return StatusCode(500, new { Error = "Lỗi khi lấy thông tin profile", Message = ex.Message });
+            }
         }
 
         [HttpPost]
         public IActionResult CreateProfile([FromBody] ClientProfile profile)
         {
-            if (profile == null)
-                return BadRequest("Invalid profile data");
+            try
+            {
+                if (profile == null || string.IsNullOrEmpty(profile.Name) || string.IsNullOrEmpty(profile.AppID))
+                {
+                    _logger.LogWarning("CreateProfile: Dữ liệu profile không hợp lệ");
+                    return BadRequest(new { Error = "Dữ liệu profile không hợp lệ, cần Name và AppID" });
+                }
 
-            var result = _profileManager.AddProfile(profile);
-            return CreatedAtAction(nameof(GetProfileById), new { id = result.Id }, result);
+                var result = _profileManager.AddProfile(profile);
+                return CreatedAtAction(nameof(GetProfileById), new { id = result.Id }, result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi tạo profile mới");
+                return StatusCode(500, new { Error = "Lỗi khi tạo profile", Message = ex.Message });
+            }
         }
 
         [HttpPut("{id:int}")]
         public IActionResult UpdateProfile(int id, [FromBody] ClientProfile profile)
         {
-            if (profile == null || id != profile.Id)
-                return BadRequest("Invalid profile data");
+            try
+            {
+                if (profile == null || id != profile.Id)
+                {
+                    _logger.LogWarning("UpdateProfile: Dữ liệu profile không hợp lệ hoặc ID không khớp");
+                    return BadRequest(new { Error = "Dữ liệu profile không hợp lệ hoặc ID không khớp" });
+                }
 
-            bool updated = _profileManager.UpdateProfile(profile);
-            if (!updated)
-                return NotFound("Profile not found");
+                var existingProfile = _profileManager.GetProfileById(id);
+                if (existingProfile == null)
+                {
+                    _logger.LogWarning("UpdateProfile: Không tìm thấy profile có ID {Id}", id);
+                    return NotFound(new { Error = "Không tìm thấy profile" });
+                }
 
-            return Ok(profile);
+                bool updated = _profileManager.UpdateProfile(profile);
+                if (!updated)
+                {
+                    return NotFound(new { Error = "Không thể cập nhật profile" });
+                }
+                return Ok(profile);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi cập nhật profile {ProfileId}", id);
+                return StatusCode(500, new { Error = "Lỗi khi cập nhật profile", Message = ex.Message });
+            }
         }
 
         [HttpDelete("{id:int}")]
         public IActionResult DeleteProfile(int id)
         {
-            bool deleted = _profileManager.DeleteProfile(id);
-            if (!deleted)
-                return NotFound("Profile not found");
+            try
+            {
+                var profile = _profileManager.GetProfileById(id);
+                if (profile == null)
+                {
+                    _logger.LogWarning("DeleteProfile: Không tìm thấy profile có ID {Id}", id);
+                    return NotFound(new { Error = "Không tìm thấy profile" });
+                }
 
-            return NoContent();
-        }
-
-        [HttpPost("convert")]
-        public IActionResult ConvertLegacyToClientProfile([FromBody] GameProfile gameProfile)
-        {
-            if (gameProfile == null)
-                return BadRequest("Invalid profile data");
-
-            var clientProfile = _profileManager.ConvertToClientProfile(gameProfile);
-            return Ok(clientProfile);
+                bool deleted = _profileManager.DeleteProfile(id);
+                if (!deleted)
+                {
+                    return NotFound(new { Error = "Không thể xóa profile" });
+                }
+                return NoContent();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi xóa profile {ProfileId}", id);
+                return StatusCode(500, new { Error = "Lỗi khi xóa profile", Message = ex.Message });
+            }
         }
     }
 }
