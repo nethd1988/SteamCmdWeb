@@ -70,7 +70,7 @@
                         
                         <div class="text-end">
                             <button id="importAllBtn" class="btn btn-primary" disabled>
-                                <i class="bi bi-plus-circle me-1"></i> Import vào AppProfiles
+                                <i class="bi bi-plus-circle me-1"></i> Import vào Profiles
                             </button>
                         </div>
                     </div>
@@ -216,7 +216,7 @@
                         <td>${new Date(backup.creationTime).toLocaleString()}</td>
                         <td>${backup.sizeMB} MB</td>
                         <td>
-                            <button class="btn btn-sm btn-outline-primary">
+                            <button type="button" class="btn btn-sm btn-outline-primary">
                                 <i class="bi bi-eye"></i> Xem
                             </button>
                         </td>
@@ -334,7 +334,7 @@
             document.getElementById('importAllBtn').disabled = true;
             return;
         }
-        
+
         // Tạo bảng hiển thị
         let html = `
             <div class="table-responsive">
@@ -454,7 +454,7 @@
         if (!profile) return;
         
         // Chuyển hướng đến trang Game App Profiles
-        window.location.href = `/AppProfiles?copyProfile=${encodeURIComponent(JSON.stringify(profile))}`;
+        window.location.href = `/Profiles?copyProfile=${encodeURIComponent(JSON.stringify(profile))}`;
     }
     
     // Thêm một profile
@@ -475,7 +475,7 @@
             Status: "Ready"
         };
         
-        fetch('/api/appprofiles', {
+        fetch('/api/profiles', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -544,7 +544,7 @@
         .then(result => {
             if (result.success) {
                 alert(`Import thành công: Đã thêm ${result.added}, Bỏ qua ${result.skipped}`);
-                window.location.href = '/AppProfiles';
+                window.location.href = '/Profiles';
             } else {
                 alert('Lỗi: ' + result.message);
             }

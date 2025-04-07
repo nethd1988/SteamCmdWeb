@@ -14,7 +14,7 @@
             <button id="refreshBtn" class="btn btn-outline-primary btn-sm me-2">
                 <i class="bi bi-arrow-clockwise me-1"></i> Làm mới
             </button>
-            <a href="/AppProfiles" class="btn btn-primary btn-sm">
+            <a href="/Profiles" class="btn btn-primary btn-sm">
                 <i class="bi bi-grid-3x3-gap me-1"></i> Xem dạng lưới
             </a>
         </div>
@@ -48,7 +48,6 @@
     </div>
 </div>
 
-<!-- Modal xác nhận xóa -->
 <div class="modal fade" id="deleteConfirmModal" tabindex="-1" aria-labelledby="deleteConfirmModalLabel" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content bg-dark">
@@ -68,7 +67,6 @@
     </div>
 </div>
 
-<!-- Modal hiển thị thông tin chi tiết -->
 <div class="modal fade" id="detailsModal" tabindex="-1" aria-labelledby="detailsModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg">
         <div class="modal-content bg-dark">
@@ -82,22 +80,10 @@
                         <div class="mb-3">
                             <h6>Thông tin chung</h6>
                             <table class="table table-sm table-dark mb-0">
-                                <tr>
-                                    <td width="35%">ID:</td>
-                                    <td id="detail-id"></td>
-                                </tr>
-                                <tr>
-                                    <td>Tên Game:</td>
-                                    <td id="detail-name"></td>
-                                </tr>
-                                <tr>
-                                    <td>App ID:</td>
-                                    <td id="detail-appid"></td>
-                                </tr>
-                                <tr>
-                                    <td>Đường dẫn:</td>
-                                    <td id="detail-path"></td>
-                                </tr>
+                                <tr><td width="35%">ID:</td><td id="detail-id"></td></tr>
+                                <tr><td>Tên Game:</td><td id="detail-name"></td></tr>
+                                <tr><td>App ID:</td><td id="detail-appid"></td></tr>
+                                <tr><td>Đường dẫn:</td><td id="detail-path"></td></tr>
                             </table>
                         </div>
                     </div>
@@ -105,22 +91,10 @@
                         <div class="mb-3">
                             <h6>Thông tin khác</h6>
                             <table class="table table-sm table-dark mb-0">
-                                <tr>
-                                    <td width="35%">Trạng thái:</td>
-                                    <td id="detail-status"></td>
-                                </tr>
-                                <tr>
-                                    <td>Tài khoản:</td>
-                                    <td id="detail-account"></td>
-                                </tr>
-                                <tr>
-                                    <td>Tham số:</td>
-                                    <td id="detail-arguments"></td>
-                                </tr>
-                                <tr>
-                                    <td>Chạy lần cuối:</td>
-                                    <td id="detail-lastrun"></td>
-                                </tr>
+                                <tr><td width="35%">Trạng thái:</td><td id="detail-status"></td></tr>
+                                <tr><td>Tài khoản:</td><td id="detail-account"></td></tr>
+                                <tr><td>Tham số:</td><td id="detail-arguments"></td></tr>
+                                <tr><td>Chạy lần cuối:</td><td id="detail-lastrun"></td></tr>
                             </table>
                         </div>
                     </div>
@@ -157,10 +131,12 @@
             </tr>
         `;
         
-        fetch('/api/appprofiles')
-            .then(response => response.json())
+        fetch('/api/profiles')
+            .then(response => {
+                if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
+                return response.json();
+            })
             .then(data => {
-                console.log("Dữ liệu profiles:", data);
                 profiles = data;
                 displayProfiles(profiles);
             })
@@ -170,7 +146,7 @@
                     <tr>
                         <td colspan="7" class="text-center text-danger">
                             <i class="bi bi-exclamation-triangle-fill me-2"></i>
-                            Không thể tải danh sách profiles. Vui lòng thử lại sau.
+                            Không thể tải danh sách profiles: ${error.message}
                         </td>
                     </tr>
                 `;
@@ -318,8 +294,8 @@
     
     // Chỉnh sửa profile
     function editProfile(id) {
-        // Chuyển hướng đến trang AppProfiles với query param edit
-        window.location.href = `/AppProfiles?edit=${id}`;
+        // Chuyển hướng đến trang Profiles với query param edit
+        window.location.href = `/Profiles?edit=${id}`;
     }
     
     // Xác nhận xóa profile
@@ -344,7 +320,7 @@
         deleteBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Đang xóa...';
         deleteBtn.disabled = true;
         
-        fetch(`/api/appprofiles/${selectedProfile.id}`, {
+        fetch(`/api/profiles/${selectedProfile.id}`, {
             method: 'DELETE'
         })
         .then(response => {

@@ -20,7 +20,7 @@ namespace SteamCmdWeb
         {
             return app.Use(async (context, next) =>
             {
-                bool isSilentSyncRequest = context.Request.Path.StartsWithSegments("/api/silentsync") &&
+                bool isSilentSyncRequest = context.Request.Path.StartsWithSegments("/api/sync") &&
                                            context.Request.Method == "POST";
 
                 if (isSilentSyncRequest)
@@ -29,7 +29,7 @@ namespace SteamCmdWeb
                     string clientIp = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
                     DateTime timestamp = DateTime.Now;
 
-                    logger.LogInformation("Nhận yêu cầu silent sync từ {IpAddress}", clientIp);
+                    logger.LogInformation("Nhận yêu cầu sync từ {IpAddress}", clientIp);
 
                     // Ghi log đồng bộ
                     try
@@ -40,14 +40,14 @@ namespace SteamCmdWeb
                             Directory.CreateDirectory(logDir);
                         }
 
-                        string logFilePath = Path.Combine(logDir, $"silentsync_{DateTime.Now:yyyyMMdd}.log");
-                        string logEntry = $"{timestamp:yyyy-MM-dd HH:mm:ss} - {clientIp} - Silent Sync Request{Environment.NewLine}";
+                        string logFilePath = Path.Combine(logDir, $"sync_{DateTime.Now:yyyyMMdd}.log");
+                        string logEntry = $"{timestamp:yyyy-MM-dd HH:mm:ss} - {clientIp} - Sync Request{Environment.NewLine}";
 
                         await File.AppendAllTextAsync(logFilePath, logEntry);
                     }
                     catch (Exception ex)
                     {
-                        logger.LogError(ex, "Lỗi khi ghi log silentsync");
+                        logger.LogError(ex, "Lỗi khi ghi log sync");
                     }
 
                     // Cho phép đọc body request nhiều lần
@@ -65,7 +65,7 @@ namespace SteamCmdWeb
                             if (!Directory.Exists(backupFolder))
                             {
                                 Directory.CreateDirectory(backupFolder);
-                            }
+                             }
 
                             string backupFilePath = Path.Combine(backupFolder, $"request_{clientIp.Replace(":", "_")}_{timestamp:yyyyMMddHHmmss}.raw");
 
@@ -92,7 +92,7 @@ namespace SteamCmdWeb
                     var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
                     string clientIp = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
 
-                    logger.LogInformation("Đã xử lý yêu cầu silent sync từ {IpAddress}, Status: {StatusCode}",
+                    logger.LogInformation("Đã xử lý yêu cầu sync từ {IpAddress}, Status: {StatusCode}",
                         clientIp, context.Response.StatusCode);
                 }
             });
@@ -124,7 +124,7 @@ namespace SteamCmdWeb
                 string method = context.Request.Method;
 
                 // Chỉ log các yêu cầu từ xa, bỏ qua các yêu cầu local 
-                if (!IsLocalRequest(context) && !path.StartsWith("/api/silentsync")) // Tránh log trùng lặp với SilentSync
+                if (!IsLocalRequest(context) && !path.StartsWith("/api/sync")) // Tránh log trùng lặp với sync
                 {
                     // Log các yêu cầu có phương thức thay đổi dữ liệu
                     if (method != "GET" && method != "HEAD" && method != "OPTIONS")

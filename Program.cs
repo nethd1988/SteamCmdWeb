@@ -59,7 +59,7 @@ builder.Services.AddCors(options =>
         .AllowAnyOrigin()
         .AllowAnyMethod()
         .AllowAnyHeader());
-    
+
     options.AddPolicy("AllowTrustedOrigins", builder => builder
         .WithOrigins("http://localhost:5000", "https://localhost:5001")
         .AllowAnyMethod()
@@ -74,24 +74,6 @@ builder.Logging.AddEventLog();
 builder.Logging.AddFilter("Microsoft", LogLevel.Warning);
 builder.Logging.AddFilter("System", LogLevel.Warning);
 builder.Logging.AddFilter("SteamCmdWeb", LogLevel.Information);
-
-// **Rate Limiting**
-builder.Services.AddRateLimiter(options =>
-{
-    options.RejectionStatusCode = 429; // Too Many Requests
-    options.GlobalLimiter = Microsoft.AspNetCore.RateLimiting.PartitionedRateLimiter.Create<Microsoft.AspNetCore.Http.HttpContext, string>(context =>
-    {
-        return Microsoft.AspNetCore.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
-            partitionKey: context.Connection.RemoteIpAddress?.ToString() ?? "anonymous",
-            factory: partition => new Microsoft.AspNetCore.RateLimiting.FixedWindowRateLimiterOptions
-            {
-                AutoReplenishment = true,
-                PermitLimit = 100,
-                QueueLimit = 0,
-                Window = TimeSpan.FromMinutes(1)
-            });
-    });
-});
 
 var app = builder.Build();
 
@@ -110,9 +92,6 @@ app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseRouting();
 app.UseCors("AllowTrustedOrigins");
-
-// **Rate limiting**
-app.UseRateLimiter();
 
 app.UseAuthentication();
 app.UseAuthorization();
@@ -170,10 +149,10 @@ app.Use(async (context, next) =>
         {
             context.Response.StatusCode = 500;
             context.Response.ContentType = "application/json";
-            var error = new 
-            { 
+            var error = new
+            {
                 Success = false,
-                Error = "Server Error", 
+                Error = "Server Error",
                 Message = app.Environment.IsDevelopment() ? ex.Message : "Đã xảy ra lỗi khi xử lý yêu cầu.",
                 TraceId = context.TraceIdentifier
             };
@@ -186,15 +165,15 @@ app.Use(async (context, next) =>
 app.Use(async (context, next) =>
 {
     await next();
-    
+
     // Xử lý các yêu cầu API không tìm thấy
     if (context.Response.StatusCode == 404 && context.Request.Path.StartsWithSegments("/api"))
     {
         context.Response.ContentType = "application/json";
-        var error = new 
-        { 
+        var error = new
+        {
             Success = false,
-            Error = "Not Found", 
+            Error = "Not Found",
             Message = $"API endpoint '{context.Request.Path}' không tồn tại",
             TraceId = context.TraceIdentifier
         };
@@ -203,11 +182,11 @@ app.Use(async (context, next) =>
 });
 
 // **Thiết lập Health Check endpoint**
-app.MapGet("/health", () => 
+app.MapGet("/health", () =>
 {
-    return new 
-    { 
-        Status = "Healthy", 
+    return new
+    {
+        Status = "Healthy",
         Timestamp = DateTime.UtcNow,
         Version = "1.0.0"
     };
