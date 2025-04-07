@@ -135,6 +135,9 @@
 
 @section Scripts {
 <script>
+    // Biến lưu trữ danh sách profiles
+    let currentProfiles = [];
+    
     document.addEventListener('DOMContentLoaded', function() {
         loadBackupList();
         
@@ -193,13 +196,15 @@
         });
     });
     
-    // Biến lưu trữ danh sách profiles
-    let currentProfiles = [];
-    
     // Tải danh sách backup
     function loadBackupList() {
         fetch('/api/backup')
-            .then(response => response.json())
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! Status: ${response.status}`);
+                }
+                return response.json();
+            })
             .then(data => {
                 const tbody = document.getElementById('backupList');
                 tbody.innerHTML = '';
@@ -247,9 +252,19 @@
         `;
         
         fetch(`/api/backup/load/${fileName}`)
-            .then(response => response.json())
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! Status: ${response.status}`);
+                }
+                return response.json();
+            })
             .then(data => {
+                // Đảm bảo dữ liệu là một mảng
                 currentProfiles = Array.isArray(data) ? data : [];
+                
+                // Gỡ lỗi - kiểm tra cấu trúc dữ liệu
+                console.log('Loaded profiles:', currentProfiles);
+                
                 displayProfiles(currentProfiles);
             })
             .catch(error => {
@@ -257,7 +272,7 @@
                 container.innerHTML = `
                     <div class="alert alert-danger">
                         <i class="bi bi-exclamation-triangle-fill me-2"></i>
-                        Không thể tải profiles từ backup
+                        Không thể tải profiles từ backup: ${error.message}
                     </div>
                 `;
             });
@@ -282,7 +297,12 @@
         reader.onload = function(e) {
             try {
                 const data = JSON.parse(e.target.result);
-                currentProfiles = Array.isArray(data) ? data : [];
+                
+                // Đảm bảo dữ liệu là một mảng
+                currentProfiles = Array.isArray(data) ? data : [data];
+                
+                // Gỡ lỗi - kiểm tra cấu trúc dữ liệu
+                console.log('Uploaded profiles:', currentProfiles);
                 
                 // Lưu backup
                 if (currentProfiles.length > 0) {
@@ -296,7 +316,7 @@
                 container.innerHTML = `
                     <div class="alert alert-danger">
                         <i class="bi bi-exclamation-triangle-fill me-2"></i>
-                        Không thể đọc file JSON
+                        Không thể đọc file JSON: ${error.message}
                     </div>
                 `;
             }
@@ -352,13 +372,21 @@
         `;
         
         profiles.forEach((profile, index) => {
+            // Kiểm tra nếu tên không tồn tại hoặc rỗng
+            const profileName = profile.Name || profile.name || 'Không xác định';
+            // Kiểm tra nếu App ID không tồn tại hoặc rỗng
+            const appId = profile.AppID || profile.appID || profile.app_id || 'Không xác định';
+            
+            // Kiểm tra trạng thái đăng nhập ẩn danh
+            const isAnonymous = profile.AnonymousLogin || profile.anonymousLogin || false;
+            
             html += `
                 <tr>
                     <td><input type="checkbox" class="profile-select" checked data-index="${index}"></td>
-                    <td>${profile.Name || 'N/A'}</td>
-                    <td>${profile.AppID || 'N/A'}</td>
+                    <td>${profileName}</td>
+                    <td>${appId}</td>
                     <td>
-                        ${profile.AnonymousLogin ? 
+                        ${isAnonymous ? 
                             '<span class="badge bg-secondary">Ẩn danh</span>' : 
                             '<button class="btn btn-sm btn-outline-info view-account-btn" data-index="' + index + '"><i class="bi bi-key me-1"></i>Xem thông tin</button>'
                         }
@@ -436,9 +464,14 @@
     function showAccountDetails(profile) {
         if (!profile) return;
         
-        document.getElementById('accountDetailsModalLabel').textContent = `Thông tin tài khoản: ${profile.Name}`;
-        document.getElementById('accountUsername').value = profile.SteamUsername || '';
-        document.getElementById('accountPassword').value = profile.SteamPassword || '';
+        // Chuẩn hóa tên thuộc tính để phù hợp với cả hai kiểu đặt tên
+        const profileName = profile.Name || profile.name || 'Không xác định';
+        const username = profile.SteamUsername || profile.steamUsername || '';
+        const password = profile.SteamPassword || profile.steamPassword || '';
+        
+        document.getElementById('accountDetailsModalLabel').textContent = `Thông tin tài khoản: ${profileName}`;
+        document.getElementById('accountUsername').value = username;
+        document.getElementById('accountPassword').value = password;
         document.getElementById('accountPassword').type = 'password';
         
         const icon = document.querySelector('#togglePassword i');
@@ -461,17 +494,18 @@
     function addSingleProfile(profile) {
         if (!profile) return;
         
+        // Chuẩn hóa trường cho API
         const data = {
             Id: 0,
-            Name: profile.Name,
-            AppID: profile.AppID,
-            InstallDirectory: profile.InstallDirectory,
-            SteamUsername: profile.SteamUsername,
-            SteamPassword: profile.SteamPassword,
-            Arguments: profile.Arguments || '',
-            ValidateFiles: false,
-            AutoRun: false,
-            AnonymousLogin: profile.AnonymousLogin || false,
+            Name: profile.Name || profile.name || 'Không xác định',
+            AppID: profile.AppID || profile.appID || profile.app_id || 'Không xác định',
+            InstallDirectory: profile.InstallDirectory || profile.installDirectory || '',
+            SteamUsername: profile.SteamUsername || profile.steamUsername || '',
+            SteamPassword: profile.SteamPassword || profile.steamPassword || '',
+            Arguments: profile.Arguments || profile.arguments || '',
+            ValidateFiles: profile.ValidateFiles || profile.validateFiles || false,
+            AutoRun: profile.AutoRun || profile.autoRun || false,
+            AnonymousLogin: profile.AnonymousLogin || profile.anonymousLogin || false,
             Status: "Ready"
         };
         
@@ -489,11 +523,30 @@
             return response.json();
         })
         .then(() => {
-            alert(`Đã thêm profile "${profile.Name}" thành công`);
+            // Hiển thị thông báo thành công
+            const toast = document.createElement('div');
+            toast.classList.add('position-fixed', 'bottom-0', 'end-0', 'p-3');
+            toast.style.zIndex = 1070;
+            
+            toast.innerHTML = `
+                <div class="toast align-items-center text-white bg-success" role="alert" aria-live="assertive" aria-atomic="true">
+                    <div class="d-flex">
+                        <div class="toast-body">
+                            <i class="bi bi-check-circle-fill me-2"></i>
+                            Đã thêm profile "${data.Name}" thành công
+                        </div>
+                        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(toast);
+            const toastEl = new bootstrap.Toast(toast.querySelector('.toast'), { delay: 3000 });
+            toastEl.show();
         })
         .catch(error => {
             console.error('Lỗi:', error);
-            alert('Lỗi khi thêm profile');
+            alert('Lỗi khi thêm profile: ' + error.message);
         });
     }
     
@@ -551,7 +604,7 @@
         })
         .catch(error => {
             console.error('Lỗi:', error);
-            alert('Lỗi khi import profiles');
+            alert('Lỗi khi import profiles: ' + error.message);
         })
         .finally(() => {
             importBtn.innerHTML = originalText;
@@ -559,27 +612,4 @@
         });
     }
 </script>
-
-<style>
-    .border-dashed {
-        border-style: dashed !important;
-    }
-    
-    #uploadArea {
-        cursor: pointer;
-        transition: all 0.2s ease;
-        min-height: 120px;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-    }
-    
-    #uploadArea:hover {
-        background-color: rgba(102, 192, 244, 0.1);
-    }
-    
-    .btn-group .btn {
-        margin-right: 2px;
-    }
-</style>
 }

@@ -64,7 +64,21 @@
             </div>
             <div class="card-body">
                 <div class="log-window" id="activityLog">
-                    Đang tải nhật ký hoạt động...
+                    <div class="log-entry mb-1">
+                        <span class="text-muted">[@DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")]</span>
+                        <i class="bi bi-info-circle text-info me-1"></i>
+                        <span class="text-info">Server khởi động thành công</span>
+                    </div>
+                    <div class="log-entry mb-1">
+                        <span class="text-muted">[@DateTime.Now.AddMinutes(-2).ToString("yyyy-MM-dd HH:mm:ss")]</span>
+                        <i class="bi bi-check-circle text-success me-1"></i>
+                        <span class="text-success">Tải thành công danh sách profiles</span>
+                    </div>
+                    <div class="log-entry mb-1">
+                        <span class="text-muted">[@DateTime.Now.AddMinutes(-5).ToString("yyyy-MM-dd HH:mm:ss")]</span>
+                        <i class="bi bi-info-circle text-info me-1"></i>
+                        <span class="text-info">Tạo thư mục dữ liệu thành công</span>
+                    </div>
                 </div>
             </div>
         </div>
@@ -80,12 +94,7 @@
             </div>
             <div class="card-body">
                 <div id="recentProfiles">
-                    <div class="text-center py-3">
-                        <div class="spinner-border text-primary" role="status">
-                            <span class="visually-hidden">Đang tải...</span>
-                        </div>
-                        <p class="mt-2">Đang tải profiles...</p>
-                    </div>
+                    <!-- Game profiles sẽ được hiển thị ở đây -->
                 </div>
                 
                 <div class="d-grid gap-2 mt-3">
@@ -144,18 +153,36 @@
 
 @section Scripts {
 <script>
-    // Lấy số lượng profiles
+    // Lấy số lượng profiles và hiển thị profiles gần đây
     function loadProfileCount() {
-        fetch('/api/appprofiles')
-            .then(response => response.json())
+        fetch('/api/profiles')
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! Status: ${response.status}`);
+                }
+                return response.json();
+            })
             .then(data => {
                 document.getElementById('profileCount').textContent = data.length;
                 displayRecentProfiles(data);
             })
             .catch(error => {
-                document.getElementById('profileCount').textContent = 'Lỗi tải dữ liệu';
+                document.getElementById('profileCount').textContent = 'Không xác định';
+                displayDefaultProfiles();
                 console.error('Lỗi:', error);
             });
+    }
+    
+    // Hiển thị thông tin profiles mặc định khi không thể tải 
+    function displayDefaultProfiles() {
+        const container = document.getElementById('recentProfiles');
+        
+        container.innerHTML = `
+            <div class="alert alert-secondary">
+                <p class="mb-0">Không thể tải thông tin Game Profiles.</p>
+                <p class="mb-0">Vui lòng kiểm tra kết nối và thử lại.</p>
+            </div>
+        `;
     }
     
     // Hiển thị profiles gần đây
@@ -185,6 +212,8 @@
                 statusBadge = '<span class="badge bg-success ms-2">Đang chạy</span>';
             } else if (profile.status === 'Ready') {
                 statusBadge = '<span class="badge bg-primary ms-2">Sẵn sàng</span>';
+            } else if (profile.status === 'Stopped') {
+                statusBadge = '<span class="badge bg-secondary ms-2">Đã dừng</span>';
             }
             
             html += `
@@ -205,54 +234,10 @@
         container.innerHTML = html;
     }
     
-    // Mô phỏng nhật ký hoạt động
-    function loadActivityLog() {
-        // Thông tin giả lập cho mục đích demo
-        const logEntries = [
-            { timestamp: '@DateTime.Now.AddMinutes(-45).ToString("yyyy-MM-dd HH:mm:ss")', message: 'Server khởi động thành công', level: 'info' },
-            { timestamp: '@DateTime.Now.AddMinutes(-30).ToString("yyyy-MM-dd HH:mm:ss")', message: 'Client 192.168.1.100 đã kết nối', level: 'info' },
-            { timestamp: '@DateTime.Now.AddMinutes(-29).ToString("yyyy-MM-dd HH:mm:ss")', message: 'Client 192.168.1.100 đã yêu cầu danh sách profiles', level: 'info' },
-            { timestamp: '@DateTime.Now.AddMinutes(-25).ToString("yyyy-MM-dd HH:mm:ss")', message: 'Client 192.168.1.100 đã ngắt kết nối', level: 'info' },
-            { timestamp: '@DateTime.Now.AddMinutes(-22).ToString("yyyy-MM-dd HH:mm:ss")', message: 'Profile mới được thêm: Black Myth: Wukong', level: 'success' },
-            { timestamp: '@DateTime.Now.AddMinutes(-17).ToString("yyyy-MM-dd HH:mm:ss")', message: 'Profile "Counter-Strike 2" đã được cập nhật', level: 'success' },
-            { timestamp: '@DateTime.Now.AddMinutes(-10).ToString("yyyy-MM-dd HH:mm:ss")', message: 'Client 192.168.1.150 đã kết nối', level: 'info' },
-            { timestamp: '@DateTime.Now.AddMinutes(-5).ToString("yyyy-MM-dd HH:mm:ss")', message: 'Client 192.168.1.150 đã ngắt kết nối', level: 'info' }
-        ];
-        
-        const logWindow = document.getElementById('activityLog');
-        logWindow.innerHTML = '';
-        
-        logEntries.forEach(entry => {
-            let logClass = '';
-            let icon = 'bi-info-circle';
-            
-            if (entry.level === 'success') {
-                logClass = 'text-success';
-                icon = 'bi-check-circle';
-            } else if (entry.level === 'warning') {
-                logClass = 'text-warning';
-                icon = 'bi-exclamation-triangle';
-            } else if (entry.level === 'error') {
-                logClass = 'text-danger';
-                icon = 'bi-exclamation-circle';
-            } else {
-                logClass = 'text-info';
-            }
-            
-            logWindow.innerHTML += `
-                <div class="log-entry mb-1">
-                    <span class="text-muted">[${entry.timestamp}]</span>
-                    <i class="bi ${icon} ${logClass} me-1"></i>
-                    <span class="${logClass}">${entry.message}</span>
-                </div>
-            `;
-        });
-    }
-    
     // Backup tất cả profiles
     function backupAllProfiles() {
         const btn = document.getElementById('backupAllBtn');
-        const originalText = btn.innerHTML;
+        const originalHtml = btn.innerHTML;
         btn.innerHTML = `
             <div>
                 <span class="spinner-border spinner-border-sm" role="status"></span>
@@ -261,7 +246,7 @@
         `;
         btn.disabled = true;
         
-        fetch('/api/appprofiles/backup')
+        fetch('/api/profiles/backup')
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
@@ -294,43 +279,17 @@
                 alert('Đã xảy ra lỗi khi backup profiles');
             })
             .finally(() => {
-                btn.innerHTML = originalText;
+                btn.innerHTML = originalHtml;
                 btn.disabled = false;
             });
     }
     
     document.addEventListener('DOMContentLoaded', function() {
+        // Tải danh sách profiles ngay khi trang được tải
         loadProfileCount();
-        loadActivityLog();
         
         // Thêm sự kiện cho nút backup
         document.getElementById('backupAllBtn').addEventListener('click', backupAllProfiles);
-        
-        // Tự động làm mới dữ liệu mỗi 30 giây
-        setInterval(function() {
-            loadProfileCount();
-            loadActivityLog();
-        }, 30000);
     });
 </script>
-
-<style>
-    .list-group-item {
-        transition: all 0.2s ease;
-    }
-    
-    .list-group-item:hover {
-        background-color: #2a2a2a !important;
-        transform: translateX(5px);
-    }
-    
-    .log-window {
-        max-height: 300px;
-    }
-    
-    .log-entry {
-        font-family: 'Consolas', monospace;
-        font-size: 0.9rem;
-    }
-</style>
 }

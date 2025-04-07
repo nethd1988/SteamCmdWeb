@@ -14,8 +14,15 @@ namespace SteamCmdWeb.Services
 
         public DecryptionService(IConfiguration configuration, ILogger<DecryptionService> logger)
         {
-            _encryptionKey = configuration["EncryptionKey"] ?? throw new ArgumentNullException("EncryptionKey is missing");
+            // Sửa dòng này - thay vì ném lỗi khi không có cấu hình, cung cấp một khóa mặc định an toàn
+            _encryptionKey = configuration["EncryptionKey"] ?? "SteamCmdWebSecureKey123!@#$%";
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            
+            // Log thông báo nếu đang sử dụng khóa mặc định
+            if (configuration["EncryptionKey"] == null)
+            {
+                _logger.LogWarning("EncryptionKey không được cấu hình trong appsettings.json. Đang sử dụng khóa mặc định.");
+            }
         }
 
         public string DecryptString(string cipherText)
