@@ -1,36 +1,40 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 using SteamCmdWeb.Models;
 using SteamCmdWeb.Services;
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
-using Microsoft.Extensions.Logging;
 
 namespace SteamCmdWeb.Controllers
 {
-    [Route("api/[controller]")]
+    [Route("api/sync")]
     [ApiController]
     [Authorize]
-    public class SilentSyncController : ControllerBase
+    public class SyncController : ControllerBase
     {
         private readonly AppProfileManager _profileManager;
-        private readonly ILogger<SilentSyncController> _logger;
+        private readonly ILogger<SyncController> _logger;
         private readonly SilentSyncService _silentSyncService;
+        private readonly string _dataFolder;
 
-        public SilentSyncController(
+        public SyncController(
             AppProfileManager profileManager,
-            ILogger<SilentSyncController> logger,
+            ILogger<SyncController> logger,
             SilentSyncService silentSyncService)
         {
             _profileManager = profileManager ?? throw new ArgumentNullException(nameof(profileManager));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _silentSyncService = silentSyncService ?? throw new ArgumentNullException(nameof(silentSyncService));
+            _dataFolder = Path.Combine(Directory.GetCurrentDirectory(), "Data");
         }
 
+        /// <summary>
+        /// Nhận một profile từ client
+        /// </summary>
         [HttpPost("profile")]
         public async Task<IActionResult> ReceiveProfile([FromBody] ClientProfile profile)
         {
@@ -38,7 +42,7 @@ namespace SteamCmdWeb.Controllers
 
             try
             {
-                _logger.LogInformation("Nhận request SilentSync/Profile từ IP: {ClientIp}", clientIp);
+                _logger.LogInformation("Nhận request Sync/Profile từ IP: {ClientIp}", clientIp);
 
                 if (profile == null)
                 {
@@ -47,7 +51,7 @@ namespace SteamCmdWeb.Controllers
                 }
 
                 (bool success, string message) = await _silentSyncService.ReceiveProfileAsync(profile, clientIp);
-
+                
                 if (success)
                 {
                     return Ok(new { Success = true, Message = message });
@@ -64,6 +68,9 @@ namespace SteamCmdWeb.Controllers
             }
         }
 
+        /// <summary>
+        /// Nhận một batch profiles từ client
+        /// </summary>
         [HttpPost("batch")]
         public async Task<IActionResult> ReceiveProfileBatch([FromBody] List<ClientProfile> profiles)
         {
@@ -71,16 +78,18 @@ namespace SteamCmdWeb.Controllers
 
             try
             {
-                _logger.LogInformation("Nhận request SilentSync/Batch từ IP: {ClientIp}, count: {Count}", clientIp, profiles?.Count ?? 0);
+                _logger.LogInformation("Nhận request Sync/Batch từ IP: {ClientIp}, count: {Count}", 
+                    clientIp, profiles?.Count ?? 0);
 
                 if (profiles == null || profiles.Count == 0)
                 {
                     _logger.LogWarning("Nhận batch profiles trống từ IP: {ClientIp}", clientIp);
                     return BadRequest(new { Success = false, Message = "Không có profiles để xử lý" });
                 }
+                
                 if (profiles.Count > 100)
                 {
-                    return BadRequest("Too many profiles in one request (max: 100)");
+                    return BadRequest(new { Success = false, Message = "Quá nhiều profiles trong một request (tối đa: 100)" });
                 }
 
                 (bool success, string message, int added, int updated, int errors, List<int> processedIds) =
@@ -117,6 +126,9 @@ namespace SteamCmdWeb.Controllers
             }
         }
 
+        /// <summary>
+        /// Xử lý đồng bộ đầy đủ
+        /// </summary>
         [HttpPost("full")]
         public async Task<IActionResult> FullSync()
         {
@@ -124,10 +136,13 @@ namespace SteamCmdWeb.Controllers
 
             try
             {
-                _logger.LogInformation("Nhận request SilentSync/Full từ IP: {ClientIp}", clientIp);
+                _logger.LogInformation("Nhận request Sync/Full từ IP: {ClientIp}", clientIp);
 
-                using var reader = new StreamReader(Request.Body);
-                string requestBody = await reader.ReadToEndAsync();
+                string requestBody;
+                using (var reader = new StreamReader(Request.Body))
+                {
+                    requestBody = await reader.ReadToEndAsync();
+                }
 
                 if (string.IsNullOrEmpty(requestBody))
                 {
@@ -171,26 +186,16 @@ namespace SteamCmdWeb.Controllers
             }
         }
 
+        /// <summary>
+        /// Lấy thông tin trạng thái đồng bộ
+        /// </summary>
         [HttpGet("status")]
         public IActionResult GetSyncStatus()
         {
             try
             {
                 _logger.LogInformation("Nhận request lấy status sync");
-
                 var status = _silentSyncService.GetSyncStatus();
-
-                if (status is Dictionary<string, object> statusDict)
-                {
-                    foreach (var key in statusDict.Keys.ToList())
-                    {
-                        if (statusDict[key] is DateTime dateTime && dateTime == DateTime.MinValue)
-                        {
-                            statusDict[key] = null;
-                        }
-                    }
-                }
-
                 return Ok(status);
             }
             catch (Exception ex)
@@ -200,6 +205,9 @@ namespace SteamCmdWeb.Controllers
             }
         }
 
+        /// <summary>
+        /// Lấy thông tin server đồng bộ
+        /// </summary>
         [HttpGet("info")]
         public IActionResult GetSyncServerInfo()
         {
@@ -211,7 +219,14 @@ namespace SteamCmdWeb.Controllers
                 {
                     ServerVersion = "1.0.0",
                     ApiVersion = "1.0",
-                    SupportedMethods = new[] { "profile", "batch", "full" },
+                    SupportedEndpoints = new[] { 
+                        "/api/sync/profile", 
+                        "/api/sync/batch", 
+                        "/api/sync/full",
+                        "/api/sync/status",
+                        "/api/sync/info"
+                    },
+                    SupportedMethods = new[] { "POST", "GET" },
                     MaxBatchSize = 100,
                     MaxRequestSize = 50 * 1024 * 1024, // 50MB
                     ServerTime = DateTime.Now,
@@ -234,6 +249,106 @@ namespace SteamCmdWeb.Controllers
             {
                 _logger.LogError(ex, "Lỗi khi lấy thông tin server sync");
                 return StatusCode(500, new { Success = false, Message = $"Lỗi: {ex.Message}" });
+            }
+        }
+        
+        /// <summary>
+        /// Đồng bộ profiles từ client
+        /// </summary>
+        [HttpPost("client")]
+        public async Task<IActionResult> SyncProfiles([FromBody] List<ClientProfile> profiles, [FromQuery] string clientId = null)
+        {
+            try
+            {
+                if (profiles == null)
+                {
+                    _logger.LogWarning("Received null profiles for sync");
+                    return BadRequest(new { Success = false, Message = "Invalid profiles data" });
+                }
+
+                string clientIp = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+                clientId = clientId ?? clientIp ?? "unknown";
+
+                _logger.LogInformation("Starting profile sync from client {ClientId}. Profile count: {Count}", 
+                    clientId, profiles.Count);
+                
+                string jsonProfiles = JsonSerializer.Serialize(profiles);
+
+                (bool success, string message, int totalCount, int addedCount, int updatedCount, int errorCount) =
+                    await _silentSyncService.ProcessFullSyncAsync(jsonProfiles, clientIp);
+
+                if (success)
+                {
+                    // Backup trước khi xử lý
+                    await BackupReceivedProfiles(profiles, clientIp);
+                    
+                    return Ok(new
+                    {
+                        Success = true,
+                        SyncId = Guid.NewGuid().ToString().Substring(0, 8),
+                        Message = message,
+                        Details = new { 
+                            Added = addedCount, 
+                            Updated = updatedCount, 
+                            Errors = errorCount, 
+                            Total = totalCount, 
+                            Timestamp = DateTime.Now 
+                        }
+                    });
+                }
+                
+                return StatusCode(500, new
+                {
+                    Success = false,
+                    Message = message,
+                    Details = new { 
+                        Added = addedCount, 
+                        Updated = updatedCount, 
+                        Errors = errorCount, 
+                        Total = totalCount 
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error during profile sync");
+                return StatusCode(500, new { Success = false, Message = $"Sync failed: {ex.Message}" });
+            }
+        }
+
+        /// <summary>
+        /// Tạo bản sao lưu cho profiles đã nhận từ client
+        /// </summary>
+        private async Task BackupReceivedProfiles(List<ClientProfile> profiles, string clientIp)
+        {
+            try
+            {
+                if (profiles == null || profiles.Count == 0)
+                {
+                    return;
+                }
+
+                string backupFolder = Path.Combine(_dataFolder, "Backup", "ClientSync");
+                if (!Directory.Exists(backupFolder))
+                {
+                    Directory.CreateDirectory(backupFolder);
+                }
+
+                string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+                string fileName = $"sync_{clientIp.Replace(':', '_')}_{timestamp}.json";
+                string filePath = Path.Combine(backupFolder, fileName);
+
+                var options = new JsonSerializerOptions { WriteIndented = true };
+                string jsonContent = JsonSerializer.Serialize(profiles, options);
+                await System.IO.File.WriteAllTextAsync(filePath, jsonContent);
+
+                _logger.LogInformation("BackupReceivedProfiles: Đã sao lưu {Count} profiles từ {ClientIp} vào file {FileName}", 
+                    profiles.Count, clientIp, fileName);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi sao lưu profiles từ client {ClientIp}", clientIp);
+                // Không throw exception để không ảnh hưởng đến luồng xử lý chính
             }
         }
     }

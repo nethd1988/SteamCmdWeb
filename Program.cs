@@ -10,9 +10,6 @@ using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-// Namespace của MiddlewareExtensions đã được định nghĩa trong SteamCmdWeb
-// Không cần thêm using bổ sung nếu MiddlewareExtensions nằm trong cùng namespace
-
 var builder = WebApplication.CreateBuilder(args);
 
 // **Thêm các dịch vụ**
@@ -35,6 +32,12 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         options.LoginPath = "/Login";
         options.AccessDeniedPath = "/AccessDenied";
         options.ExpireTimeSpan = TimeSpan.FromMinutes(30);
+        options.SlidingExpiration = true;
+        options.Cookie.HttpOnly = true;
+        options.Cookie.SameSite = Microsoft.AspNetCore.Http.SameSiteMode.Strict;
+        options.Cookie.SecurePolicy = builder.Environment.IsDevelopment()
+            ? Microsoft.AspNetCore.Http.CookieSecurePolicy.None
+            : Microsoft.AspNetCore.Http.CookieSecurePolicy.Always;
     });
 
 // **Đăng ký các dịch vụ tùy chỉnh**
@@ -46,6 +49,9 @@ builder.Services.AddSingleton<SystemMonitoringService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<SystemMonitoringService>());
 builder.Services.AddHostedService<TcpServerService>();
 
+// **Thêm Memory Cache cho cải thiện hiệu suất**
+builder.Services.AddMemoryCache();
+
 // **Thêm CORS policy**
 builder.Services.AddCors(options =>
 {
@@ -53,6 +59,12 @@ builder.Services.AddCors(options =>
         .AllowAnyOrigin()
         .AllowAnyMethod()
         .AllowAnyHeader());
+    
+    options.AddPolicy("AllowTrustedOrigins", builder => builder
+        .WithOrigins("http://localhost:5000", "https://localhost:5001")
+        .AllowAnyMethod()
+        .AllowAnyHeader()
+        .AllowCredentials());
 });
 
 // **Cấu hình logging**
@@ -62,6 +74,24 @@ builder.Logging.AddEventLog();
 builder.Logging.AddFilter("Microsoft", LogLevel.Warning);
 builder.Logging.AddFilter("System", LogLevel.Warning);
 builder.Logging.AddFilter("SteamCmdWeb", LogLevel.Information);
+
+// **Rate Limiting**
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = 429; // Too Many Requests
+    options.GlobalLimiter = Microsoft.AspNetCore.RateLimiting.PartitionedRateLimiter.Create<Microsoft.AspNetCore.Http.HttpContext, string>(context =>
+    {
+        return Microsoft.AspNetCore.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: context.Connection.RemoteIpAddress?.ToString() ?? "anonymous",
+            factory: partition => new Microsoft.AspNetCore.RateLimiting.FixedWindowRateLimiterOptions
+            {
+                AutoReplenishment = true,
+                PermitLimit = 100,
+                QueueLimit = 0,
+                Window = TimeSpan.FromMinutes(1)
+            });
+    });
+});
 
 var app = builder.Build();
 
@@ -79,12 +109,16 @@ else
 app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseRouting();
-app.UseCors("AllowAll");
+app.UseCors("AllowTrustedOrigins");
+
+// **Rate limiting**
+app.UseRateLimiter();
+
 app.UseAuthentication();
 app.UseAuthorization();
 
 // **Sử dụng middleware tùy chỉnh**
-app.UseSilentSyncMiddleware(); // Middleware xử lý yêu cầu POST đến /api/silentsync
+app.UseSilentSyncMiddleware(); // Middleware xử lý yêu cầu POST đến /api/sync
 app.UseRemoteRequestLogging(); // Middleware ghi log các yêu cầu từ xa
 
 app.MapControllers();
@@ -97,9 +131,13 @@ var paths = new[]
     Path.Combine(app.Environment.ContentRootPath, "Profiles"),
     Path.Combine(app.Environment.ContentRootPath, "Data", "SilentSync"),
     Path.Combine(app.Environment.ContentRootPath, "Data", "Backup"),
+    Path.Combine(app.Environment.ContentRootPath, "Data", "Backup", "ClientSync"),
+    Path.Combine(app.Environment.ContentRootPath, "Data", "Backup", "SilentSync"),
+    Path.Combine(app.Environment.ContentRootPath, "Data", "Backup", "FullSync"),
     Path.Combine(app.Environment.ContentRootPath, "Data", "ClientSync"),
     Path.Combine(app.Environment.ContentRootPath, "Data", "Logs"),
-    Path.Combine(app.Environment.ContentRootPath, "Data", "Monitoring")
+    Path.Combine(app.Environment.ContentRootPath, "Data", "Monitoring"),
+    Path.Combine(app.Environment.ContentRootPath, "Data", "SyncConfig")
 };
 
 foreach (var path in paths)
@@ -132,10 +170,47 @@ app.Use(async (context, next) =>
         {
             context.Response.StatusCode = 500;
             context.Response.ContentType = "application/json";
-            var error = new { Error = "Lỗi server", Message = "Đã xảy ra lỗi khi xử lý yêu cầu." };
+            var error = new 
+            { 
+                Success = false,
+                Error = "Server Error", 
+                Message = app.Environment.IsDevelopment() ? ex.Message : "Đã xảy ra lỗi khi xử lý yêu cầu.",
+                TraceId = context.TraceIdentifier
+            };
             await context.Response.WriteAsJsonAsync(error);
         }
     }
+});
+
+// **Middleware xử lý URL không tìm thấy**
+app.Use(async (context, next) =>
+{
+    await next();
+    
+    // Xử lý các yêu cầu API không tìm thấy
+    if (context.Response.StatusCode == 404 && context.Request.Path.StartsWithSegments("/api"))
+    {
+        context.Response.ContentType = "application/json";
+        var error = new 
+        { 
+            Success = false,
+            Error = "Not Found", 
+            Message = $"API endpoint '{context.Request.Path}' không tồn tại",
+            TraceId = context.TraceIdentifier
+        };
+        await context.Response.WriteAsJsonAsync(error);
+    }
+});
+
+// **Thiết lập Health Check endpoint**
+app.MapGet("/health", () => 
+{
+    return new 
+    { 
+        Status = "Healthy", 
+        Timestamp = DateTime.UtcNow,
+        Version = "1.0.0"
+    };
 });
 
 app.Logger.LogInformation("SteamCmdWeb Server đã khởi động.");

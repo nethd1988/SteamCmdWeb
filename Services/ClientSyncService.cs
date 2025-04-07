@@ -13,6 +13,17 @@ namespace SteamCmdWeb.Services
         private readonly AppProfileManager _profileManager;
         private readonly ILogger<SilentSyncService> _logger;
         private readonly string _logPath;
+        private readonly object _syncLock = new object();
+        
+        // Thống kê đồng bộ
+        private int _totalSyncCount = 0;
+        private int _successSyncCount = 0;
+        private int _failedSyncCount = 0;
+        private DateTime _lastSyncTime = DateTime.MinValue;
+        private int _lastSyncAddedCount = 0;
+        private int _lastSyncUpdatedCount = 0;
+        private int _lastSyncErrorCount = 0;
+        private bool _syncEnabled = true;
 
         public SilentSyncService(AppProfileManager profileManager, ILogger<SilentSyncService> logger)
         {
@@ -26,38 +37,99 @@ namespace SteamCmdWeb.Services
             }
         }
 
+        /// <summary>
+        /// Nhận một profile từ client
+        /// </summary>
         public async Task<(bool Success, string Message)> ReceiveProfileAsync(ClientProfile profile, string clientIp)
         {
+            if (!_syncEnabled)
+            {
+                return (false, "Sync is currently disabled");
+            }
+
+            lock (_syncLock)
+            {
+                _totalSyncCount++;
+            }
+
             try
             {
                 if (profile == null)
                 {
+                    lock (_syncLock)
+                    {
+                        _failedSyncCount++;
+                    }
                     return (false, "Profile is null");
                 }
 
                 var existingProfile = _profileManager.GetProfileById(profile.Id);
+
+                await BackupProfileAsync(profile, clientIp);
+
                 if (existingProfile == null)
                 {
+                    // Thêm mới profile
                     _profileManager.AddProfile(profile);
+                    
                     await LogSyncAction($"Added profile {profile.Name} (ID: {profile.Id})", clientIp);
+                    
+                    lock (_syncLock)
+                    {
+                        _successSyncCount++;
+                        _lastSyncTime = DateTime.Now;
+                        _lastSyncAddedCount++;
+                    }
+                    
                     return (true, $"Profile {profile.Name} added successfully");
                 }
                 else
                 {
+                    // Cập nhật profile
                     _profileManager.UpdateProfile(profile);
+                    
                     await LogSyncAction($"Updated profile {profile.Name} (ID: {profile.Id})", clientIp);
+                    
+                    lock (_syncLock)
+                    {
+                        _successSyncCount++;
+                        _lastSyncTime = DateTime.Now;
+                        _lastSyncUpdatedCount++;
+                    }
+                    
                     return (true, $"Profile {profile.Name} updated successfully");
                 }
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error receiving profile from {ClientIp}", clientIp);
+                
+                lock (_syncLock)
+                {
+                    _failedSyncCount++;
+                    _lastSyncErrorCount++;
+                }
+                
                 return (false, $"Error: {ex.Message}");
             }
         }
 
-        public async Task<(bool Success, string Message, int AddedCount, int UpdatedCount, int ErrorCount, List<int> ProcessedIds)> ReceiveProfilesAsync(List<ClientProfile> profiles, string clientIp)
+        /// <summary>
+        /// Nhận một loạt profiles từ client
+        /// </summary>
+        public async Task<(bool Success, string Message, int AddedCount, int UpdatedCount, int ErrorCount, List<int> ProcessedIds)> 
+            ReceiveProfilesAsync(List<ClientProfile> profiles, string clientIp)
         {
+            if (!_syncEnabled)
+            {
+                return (false, "Sync is currently disabled", 0, 0, 0, new List<int>());
+            }
+
+            lock (_syncLock)
+            {
+                _totalSyncCount++;
+            }
+
             try
             {
                 int addedCount = 0;
@@ -65,23 +137,46 @@ namespace SteamCmdWeb.Services
                 int errorCount = 0;
                 var processedIds = new List<int>();
 
+                await BackupProfilesAsync(profiles, clientIp);
+
                 foreach (var profile in profiles)
                 {
-                    var existingProfile = _profileManager.GetProfileById(profile.Id);
-                    if (existingProfile == null)
+                    try
                     {
-                        _profileManager.AddProfile(profile);
-                        addedCount++;
-                        processedIds.Add(profile.Id);
-                        await LogSyncAction($"Added profile {profile.Name} (ID: {profile.Id})", clientIp);
+                        if (profile == null) continue;
+
+                        var existingProfile = _profileManager.GetProfileById(profile.Id);
+                        if (existingProfile == null)
+                        {
+                            _profileManager.AddProfile(profile);
+                            addedCount++;
+                            processedIds.Add(profile.Id);
+                            await LogSyncAction($"Added profile {profile.Name} (ID: {profile.Id})", clientIp);
+                        }
+                        else
+                        {
+                            _profileManager.UpdateProfile(profile);
+                            updatedCount++;
+                            processedIds.Add(profile.Id);
+                            await LogSyncAction($"Updated profile {profile.Name} (ID: {profile.Id})", clientIp);
+                        }
                     }
-                    else
+                    catch (Exception ex)
                     {
-                        _profileManager.UpdateProfile(profile);
-                        updatedCount++;
-                        processedIds.Add(profile.Id);
-                        await LogSyncAction($"Updated profile {profile.Name} (ID: {profile.Id})", clientIp);
+                        _logger.LogError(ex, "Error processing profile {ProfileId} from {ClientIp}", 
+                            profile?.Id, clientIp);
+                        errorCount++;
                     }
+                }
+
+                // Cập nhật thống kê
+                lock (_syncLock)
+                {
+                    _successSyncCount++;
+                    _lastSyncTime = DateTime.Now;
+                    _lastSyncAddedCount = addedCount;
+                    _lastSyncUpdatedCount = updatedCount;
+                    _lastSyncErrorCount = errorCount;
                 }
 
                 return (true, $"Processed {profiles.Count} profiles", addedCount, updatedCount, errorCount, processedIds);
@@ -89,19 +184,52 @@ namespace SteamCmdWeb.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error receiving profile batch from {ClientIp}", clientIp);
+                
+                lock (_syncLock)
+                {
+                    _failedSyncCount++;
+                }
+                
                 return (false, $"Error: {ex.Message}", 0, 0, profiles.Count, new List<int>());
             }
         }
 
-        public async Task<(bool Success, string Message, int TotalCount, int AddedCount, int UpdatedCount, int ErrorCount)> ProcessFullSyncAsync(string jsonProfiles, string clientIp)
+        /// <summary>
+        /// Xử lý full sync từ client
+        /// </summary>
+        public async Task<(bool Success, string Message, int TotalCount, int AddedCount, int UpdatedCount, int ErrorCount)> 
+            ProcessFullSyncAsync(string jsonProfiles, string clientIp)
         {
+            if (!_syncEnabled)
+            {
+                return (false, "Sync is currently disabled", 0, 0, 0, 0);
+            }
+
+            lock (_syncLock)
+            {
+                _totalSyncCount++;
+            }
+
             try
             {
-                var profiles = JsonSerializer.Deserialize<List<ClientProfile>>(jsonProfiles);
+                var options = new JsonSerializerOptions { 
+                    PropertyNameCaseInsensitive = true,
+                    AllowTrailingCommas = true,
+                    ReadCommentHandling = JsonCommentHandling.Skip
+                };
+                
+                var profiles = JsonSerializer.Deserialize<List<ClientProfile>>(jsonProfiles, options);
+                
                 if (profiles == null || profiles.Count == 0)
                 {
+                    lock (_syncLock)
+                    {
+                        _failedSyncCount++;
+                    }
                     return (false, "No profiles to process", 0, 0, 0, 0);
                 }
+
+                await BackupFullSyncDataAsync(jsonProfiles, clientIp);
 
                 int addedCount = 0;
                 int updatedCount = 0;
@@ -109,45 +237,228 @@ namespace SteamCmdWeb.Services
 
                 foreach (var profile in profiles)
                 {
-                    var existingProfile = _profileManager.GetProfileById(profile.Id);
-                    if (existingProfile == null)
+                    try
                     {
-                        _profileManager.AddProfile(profile);
-                        addedCount++;
-                        await LogSyncAction($"Added profile {profile.Name} (ID: {profile.Id})", clientIp);
+                        if (profile == null) continue;
+
+                        var existingProfile = _profileManager.GetProfileById(profile.Id);
+                        if (existingProfile == null)
+                        {
+                            _profileManager.AddProfile(profile);
+                            addedCount++;
+                            await LogSyncAction($"Added profile {profile.Name} (ID: {profile.Id})", clientIp);
+                        }
+                        else
+                        {
+                            _profileManager.UpdateProfile(profile);
+                            updatedCount++;
+                            await LogSyncAction($"Updated profile {profile.Name} (ID: {profile.Id})", clientIp);
+                        }
                     }
-                    else
+                    catch (Exception ex)
                     {
-                        _profileManager.UpdateProfile(profile);
-                        updatedCount++;
-                        await LogSyncAction($"Updated profile {profile.Name} (ID: {profile.Id})", clientIp);
+                        _logger.LogError(ex, "Error processing profile {ProfileId} during full sync", profile?.Id);
+                        errorCount++;
                     }
                 }
 
-                return (true, $"Full sync completed: {profiles.Count} profiles processed", profiles.Count, addedCount, updatedCount, errorCount);
+                // Cập nhật thống kê
+                lock (_syncLock)
+                {
+                    _successSyncCount++;
+                    _lastSyncTime = DateTime.Now;
+                    _lastSyncAddedCount = addedCount;
+                    _lastSyncUpdatedCount = updatedCount;
+                    _lastSyncErrorCount = errorCount;
+                }
+
+                return (true, $"Full sync completed: {profiles.Count} profiles processed", 
+                    profiles.Count, addedCount, updatedCount, errorCount);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error processing full sync from {ClientIp}", clientIp);
+                
+                lock (_syncLock)
+                {
+                    _failedSyncCount++;
+                }
+                
                 return (false, $"Error: {ex.Message}", 0, 0, 0, 0);
             }
         }
 
-        public Dictionary<string, object> GetSyncStatus()
+        /// <summary>
+        /// Bật/tắt đồng bộ
+        /// </summary>
+        public void SetSyncEnabled(bool enabled)
         {
-            return new Dictionary<string, object>
+            lock (_syncLock)
             {
-                { "LastSyncTime", DateTime.Now },
-                { "ActiveConnections", 0 },
-                { "TotalProfilesSynced", _profileManager.GetAllProfiles().Count }
-            };
+                _syncEnabled = enabled;
+            }
+            _logger.LogInformation("Sync is now {Status}", enabled ? "enabled" : "disabled");
         }
 
+        /// <summary>
+        /// Lấy thông tin trạng thái đồng bộ
+        /// </summary>
+        public Dictionary<string, object> GetSyncStatus()
+        {
+            Dictionary<string, object> status;
+            
+            lock (_syncLock)
+            {
+                status = new Dictionary<string, object>
+                {
+                    { "LastSyncTime", _lastSyncTime },
+                    { "TotalSyncCount", _totalSyncCount },
+                    { "SuccessSyncCount", _successSyncCount },
+                    { "FailedSyncCount", _failedSyncCount },
+                    { "LastSyncAddedCount", _lastSyncAddedCount },
+                    { "LastSyncUpdatedCount", _lastSyncUpdatedCount },
+                    { "LastSyncErrorCount", _lastSyncErrorCount },
+                    { "SyncEnabled", _syncEnabled },
+                    { "CurrentTime", DateTime.Now }
+                };
+            }
+            
+            return status;
+        }
+
+        /// <summary>
+        /// Ghi log hành động đồng bộ
+        /// </summary>
         private async Task LogSyncAction(string message, string clientIp)
         {
             string logFile = Path.Combine(_logPath, $"silentsync_{DateTime.Now:yyyyMMdd}.log");
             string logEntry = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} - {clientIp} - {message}{Environment.NewLine}";
+            
             await File.AppendAllTextAsync(logFile, logEntry);
+        }
+
+        /// <summary>
+        /// Sao lưu profile nhận được
+        /// </summary>
+        private async Task BackupProfileAsync(ClientProfile profile, string clientIp)
+        {
+            try
+            {
+                string backupFolder = Path.Combine(
+                    Directory.GetCurrentDirectory(),
+                    "Data", 
+                    "Backup", 
+                    "SilentSync"
+                );
+                
+                if (!Directory.Exists(backupFolder))
+                {
+                    Directory.CreateDirectory(backupFolder);
+                }
+
+                string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+                string fileName = $"profile_{profile.Id}_{clientIp.Replace(':', '_')}_{timestamp}.json";
+                string filePath = Path.Combine(backupFolder, fileName);
+
+                var options = new JsonSerializerOptions { WriteIndented = true };
+                string jsonContent = JsonSerializer.Serialize(profile, options);
+                await File.WriteAllTextAsync(filePath, jsonContent);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Error backing up profile {ProfileId} from {ClientIp}", 
+                    profile.Id, clientIp);
+                // Không throw exception để không ảnh hưởng đến quá trình đồng bộ
+            }
+        }
+
+        /// <summary>
+        /// Sao lưu danh sách profiles nhận được
+        /// </summary>
+        private async Task BackupProfilesAsync(List<ClientProfile> profiles, string clientIp)
+        {
+            try
+            {
+                if (profiles == null || profiles.Count == 0)
+                {
+                    return;
+                }
+
+                string backupFolder = Path.Combine(
+                    Directory.GetCurrentDirectory(),
+                    "Data", 
+                    "Backup", 
+                    "SilentSync"
+                );
+                
+                if (!Directory.Exists(backupFolder))
+                {
+                    Directory.CreateDirectory(backupFolder);
+                }
+
+                string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+                string fileName = $"batch_{clientIp.Replace(':', '_')}_{timestamp}.json";
+                string filePath = Path.Combine(backupFolder, fileName);
+
+                var options = new JsonSerializerOptions { WriteIndented = true };
+                string jsonContent = JsonSerializer.Serialize(profiles, options);
+                await File.WriteAllTextAsync(filePath, jsonContent);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Error backing up profiles batch from {ClientIp}", clientIp);
+                // Không throw exception để không ảnh hưởng đến quá trình đồng bộ
+            }
+        }
+
+        /// <summary>
+        /// Sao lưu dữ liệu full sync
+        /// </summary>
+        private async Task BackupFullSyncDataAsync(string jsonData, string clientIp)
+        {
+            try
+            {
+                string backupFolder = Path.Combine(
+                    Directory.GetCurrentDirectory(),
+                    "Data", 
+                    "Backup", 
+                    "FullSync"
+                );
+                
+                if (!Directory.Exists(backupFolder))
+                {
+                    Directory.CreateDirectory(backupFolder);
+                }
+
+                string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+                string fileName = $"full_{clientIp.Replace(':', '_')}_{timestamp}.json";
+                string filePath = Path.Combine(backupFolder, fileName);
+
+                await File.WriteAllTextAsync(filePath, jsonData);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Error backing up full sync data from {ClientIp}", clientIp);
+                // Không throw exception để không ảnh hưởng đến quá trình đồng bộ
+            }
+        }
+
+        /// <summary>
+        /// Reset thống kê đồng bộ
+        /// </summary>
+        public void ResetSyncStats()
+        {
+            lock (_syncLock)
+            {
+                _totalSyncCount = 0;
+                _successSyncCount = 0;
+                _failedSyncCount = 0;
+                _lastSyncAddedCount = 0;
+                _lastSyncUpdatedCount = 0;
+                _lastSyncErrorCount = 0;
+            }
+            
+            _logger.LogInformation("Sync statistics have been reset");
         }
     }
 }
