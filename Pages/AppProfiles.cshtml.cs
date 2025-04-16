@@ -1,4 +1,3 @@
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.Logging;
@@ -9,7 +8,7 @@ using System.Collections.Generic;
 
 namespace SteamCmdWeb.Pages
 {
-    [Authorize]
+    // Note: Đã loại bỏ yêu cầu đăng nhập để truy cập trang này
     public class AppProfilesModel : PageModel
     {
         private readonly AppProfileManager _profileManager;
