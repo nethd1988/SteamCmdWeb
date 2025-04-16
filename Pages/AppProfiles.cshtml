@@ -21,82 +21,142 @@
     </div>
 }
 
-<a href="@Url.Page("./AppProfiles", new { add = true })" class="btn btn-primary mb-3">Thêm Profile Mới</a>
+<a href="@Url.Page("./AppProfiles", new { add = true })" class="btn btn-primary mb-3">
+    <i class="bi bi-plus-circle me-1"></i> Thêm Profile Mới
+</a>
 
 @if (Model.ShowAddForm || Model.ShowEditForm)
 {
-    <h2>@(Model.ShowEditForm ? "Chỉnh sửa Profile" : "Thêm Profile Mới")</h2>
-    <form method="post" asp-page-handler="@(Model.ShowEditForm ? "Edit" : "Add")">
-        <input type="hidden" name="id" value="@(Model.ShowEditForm ? Model.CurrentProfile.Id : 0)" />
-        <div class="mb-3">
-            <label for="name" class="form-label">Tên Profile</label>
-            <input type="text" class="form-control" id="name" name="name" value="@(Model.ShowEditForm ? Model.CurrentProfile.Name : "")" required />
+    <div class="card">
+        <div class="card-header">
+            <h5 class="mb-0">@(Model.ShowEditForm ? "Chỉnh sửa Profile" : "Thêm Profile Mới")</h5>
         </div>
-        <div class="mb-3">
-            <label for="appId" class="form-label">App ID</label>
-            <input type="text" class="form-control" id="appId" name="appId" value="@(Model.ShowEditForm ? Model.CurrentProfile.AppID : "")" required />
+        <div class="card-body">
+            <form method="post" asp-page-handler="@(Model.ShowEditForm ? "Edit" : "Add")">
+                <input type="hidden" name="id" value="@(Model.ShowEditForm ? Model.CurrentProfile.Id : 0)" />
+                <div class="mb-3">
+                    <label for="name" class="form-label">Tên Profile</label>
+                    <input type="text" class="form-control" id="name" name="name" value="@(Model.ShowEditForm ? Model.CurrentProfile.Name : "")" required />
+                </div>
+                <div class="mb-3">
+                    <label for="appId" class="form-label">App ID</label>
+                    <input type="text" class="form-control" id="appId" name="appId" value="@(Model.ShowEditForm ? Model.CurrentProfile.AppID : "")" required />
+                </div>
+                <div class="mb-3">
+                    <label for="installDirectory" class="form-label">Thư mục cài đặt</label>
+                    <input type="text" class="form-control" id="installDirectory" name="installDirectory" value="@(Model.ShowEditForm ? Model.CurrentProfile.InstallDirectory : "")" required />
+                </div>
+                <div class="mb-3">
+                    <label for="steamUsername" class="form-label">Tên người dùng Steam</label>
+                    <input type="text" class="form-control" id="steamUsername" name="steamUsername" value="@(Model.ShowEditForm ? Model.CurrentProfile.SteamUsername : "")" />
+                </div>
+                <div class="mb-3">
+                    <label for="arguments" class="form-label">Tham số bổ sung</label>
+                    <input type="text" class="form-control" id="arguments" name="arguments" value="@(Model.ShowEditForm ? Model.CurrentProfile.Arguments : "")" />
+                </div>
+                <div class="mb-3 form-check">
+                    <input type="checkbox" class="form-check-input" id="anonymousLogin" name="anonymousLogin" @(Model.ShowEditForm && Model.CurrentProfile.AnonymousLogin ? "checked" : "") />
+                    <label class="form-check-label" for="anonymousLogin">Đăng nhập ẩn danh</label>
+                </div>
+                <div class="d-flex justify-content-end gap-2">
+                    <a href="@Url.Page("./AppProfiles")" class="btn btn-secondary">Hủy</a>
+                    <button type="submit" class="btn btn-primary">Lưu</button>
+                </div>
+            </form>
         </div>
-        <div class="mb-3">
-            <label for="installDirectory" class="form-label">Thư mục cài đặt</label>
-            <input type="text" class="form-control" id="installDirectory" name="installDirectory" value="@(Model.ShowEditForm ? Model.CurrentProfile.InstallDirectory : "")" required />
-        </div>
-        <div class="mb-3">
-            <label for="steamUsername" class="form-label">Tên người dùng Steam</label>
-            <input type="text" class="form-control" id="steamUsername" name="steamUsername" value="@(Model.ShowEditForm ? Model.CurrentProfile.SteamUsername : "")" />
-        </div>
-        <div class="mb-3">
-            <label for="steamPassword" class="form-label">Mật khẩu Steam</label>
-            <input type="password" class="form-control" id="steamPassword" name="steamPassword" value="@(Model.ShowEditForm ? Model.CurrentProfile.SteamPassword : "")" />
-        </div>
-        <div class="mb-3">
-            <label for="arguments" class="form-label">Tham số bổ sung</label>
-            <input type="text" class="form-control" id="arguments" name="arguments" value="@(Model.ShowEditForm ? Model.CurrentProfile.Arguments : "")" />
-        </div>
-        <div class="mb-3 form-check">
-            <input type="checkbox" class="form-check-input" id="anonymousLogin" name="anonymousLogin" @(Model.ShowEditForm && Model.CurrentProfile.AnonymousLogin ? "checked" : "") />
-            <label class="form-check-label" for="anonymousLogin">Đăng nhập ẩn danh</label>
-        </div>
-        <button type="submit" class="btn btn-primary">Lưu</button>
-        <a href="@Url.Page("./AppProfiles")" class="btn btn-secondary">Hủy</a>
-    </form>
+    </div>
 }
 else
 {
-    @if (Model.Profiles != null && Model.Profiles.Count > 0)
-    {
-        <table class="table table-striped">
-            <thead>
-                <tr>
-                    <th>ID</th>
-                    <th>Tên</th>
-                    <th>App ID</th>
-                    <th>Thư mục cài đặt</th>
-                    <th>Thao tác</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var profile in Model.Profiles)
-                {
-                    <tr>
-                        <td>@profile.Id</td>
-                        <td>@profile.Name</td>
-                        <td>@profile.AppID</td>
-                        <td>@profile.InstallDirectory</td>
-                        <td>
-                            <a href="@Url.Page("./AppProfiles", new { edit = profile.Id })" class="btn btn-sm btn-primary">Sửa</a>
-                            <button class="btn btn-sm btn-danger" onclick="confirmDelete(@profile.Id, '@profile.Name')">Xóa</button>
-                        </td>
-                    </tr>
-                }
-            </tbody>
-        </table>
-    }
-    else
-    {
-        <p>Không có profile nào để hiển thị.</p>
-    }
+    <div class="card">
+        <div class="card-body">
+            @if (Model.Profiles != null && Model.Profiles.Count > 0)
+            {
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Tên</th>
+                                <th>App ID</th>
+                                <th>Thư mục cài đặt</th>
+                                <th>Trạng thái</th>
+                                <th>Thao tác</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var profile in Model.Profiles)
+                            {
+                                <tr>
+                                    <td>@profile.Id</td>
+                                    <td>@profile.Name</td>
+                                    <td>@profile.AppID</td>
+                                    <td>@(profile.InstallDirectory.Length > 25 ? profile.InstallDirectory.Substring(0, 25) + "..." : profile.InstallDirectory)</td>
+                                    <td>
+                                        @if (profile.Status == "Running")
+                                        {
+                                            <span class="badge bg-success">Đang chạy</span>
+                                        }
+                                        else if (profile.Status == "Ready")
+                                        {
+                                            <span class="badge bg-primary">Sẵn sàng</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-secondary">@profile.Status</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm">
+                                            <a href="@Url.Page("./AppProfiles", new { edit = profile.Id })" class="btn btn-primary">
+                                                <i class="bi bi-pencil"></i>
+                                            </a>
+                                            <button class="btn btn-info" onclick="viewProfileDetails(@profile.Id)">
+                                                <i class="bi bi-eye"></i>
+                                            </button>
+                                            <button class="btn btn-danger" onclick="confirmDelete(@profile.Id, '@profile.Name')">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+            else
+            {
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle me-2"></i>
+                    Không có profile nào để hiển thị. Hãy thêm profile mới.
+                </div>
+            }
+        </div>
+    </div>
 }
 
+<!-- Modal xem chi tiết profile -->
+<div class="modal fade" id="profileDetailsModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="profileDetailsTitle">Chi tiết Profile</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="profileDetailsBody">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Đang tải...</span>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Đóng</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal xác nhận xóa -->
 <div class="modal fade" id="deleteConfirmModal" tabindex="-1" aria-labelledby="deleteConfirmModalLabel" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
@@ -105,7 +165,7 @@ else
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                Bạn có chắc chắn muốn xóa profile này không?
+                Bạn có chắc chắn muốn xóa profile "<span id="deleteGameName"></span>" không?
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Hủy</button>
@@ -117,62 +177,105 @@ else
 
 @section Scripts {
     <script>
-        let profileToDelete = null;
+        let profileIdToDelete = null;
 
         function confirmDelete(id, name) {
-            profileToDelete = { id: id, name: name };
+            profileIdToDelete = id;
+            document.getElementById('deleteGameName').textContent = name;
             const modal = new bootstrap.Modal(document.getElementById('deleteConfirmModal'));
             modal.show();
         }
 
-        function confirmDeleteGame() {
-            if (!profileToDelete) {
-                showToast('Không có profile để xóa', 'error');
-                return;
-            }
+        function viewProfileDetails(id) {
+            const modal = new bootstrap.Modal(document.getElementById('profileDetailsModal'));
+            document.getElementById('profileDetailsBody').innerHTML = `
+                <div class="text-center">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Đang tải...</span>
+                    </div>
+                </div>
+            `;
+            modal.show();
 
-            const deleteBtn = document.getElementById('confirmDeleteBtn');
-            const originalText = deleteBtn.innerHTML;
-            deleteBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Đang xóa...';
-            deleteBtn.disabled = true;
+            fetch(`/api/profiles/${id}`)
+                .then(response => response.json())
+                .then(profile => {
+                    document.getElementById('profileDetailsTitle').textContent = `Chi tiết: ${profile.name}`;
 
-            fetch('@Url.Page("./AppProfiles", "Delete")', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                    'RequestVerificationToken': document.querySelector('input[name="__RequestVerificationToken"]').value
-                },
-                body: `id=${profileToDelete.id}`
-            })
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error(`HTTP error! Status: ${response.status}`);
-                }
-                bootstrap.Modal.getInstance(document.getElementById('deleteConfirmModal')).hide();
-                showToast(`Đã xóa profile "${profileToDelete.name}" thành công!`, 'success');
-                setTimeout(() => location.reload(), 1000);
-            })
-            .catch(error => {
-                console.error('Lỗi khi xóa profile:', error);
-                showToast(`Đã xảy ra lỗi khi xóa profile: ${error.message}`, 'error');
-            })
-            .finally(() => {
-                deleteBtn.innerHTML = originalText;
-                deleteBtn.disabled = false;
-            });
+                    const content = `
+                        <div class="row">
+                            <div class="col-md-6">
+                                <p><strong>ID:</strong> ${profile.id}</p>
+                                <p><strong>Tên Profile:</strong> ${profile.name}</p>
+                                <p><strong>App ID:</strong> ${profile.appID}</p>
+                                <p><strong>Thư mục cài đặt:</strong> ${profile.installDirectory}</p>
+                            </div>
+                            <div class="col-md-6">
+                                <p><strong>Đăng nhập ẩn danh:</strong> ${profile.anonymousLogin ? 'Có' : 'Không'}</p>
+                                <p><strong>Trạng thái:</strong> ${profile.status}</p>
+                                <p><strong>Tài khoản:</strong> ${profile.anonymousLogin ? 'Ẩn danh' : (profile.steamUsername || 'Không có')}</p>
+                                <p><strong>Tham số:</strong> ${profile.arguments || 'Không có'}</p>
+                            </div>
+                        </div>
+                    `;
+
+                    document.getElementById('profileDetailsBody').innerHTML = content;
+                })
+                .catch(error => {
+                    document.getElementById('profileDetailsBody').innerHTML = `
+                        <div class="alert alert-danger">
+                            Không thể tải thông tin profile: ${error.message}
+                        </div>
+                    `;
+                });
         }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('confirmDeleteBtn').addEventListener('click', function() {
+                if (!profileIdToDelete) return;
+
+                const deleteBtn = document.getElementById('confirmDeleteBtn');
+                const originalText = deleteBtn.innerHTML;
+                deleteBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Đang xóa...';
+                deleteBtn.disabled = true;
+
+                fetch(`/api/profiles/${profileIdToDelete}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! Status: ${response.status}`);
+                    }
+
+                    bootstrap.Modal.getInstance(document.getElementById('deleteConfirmModal')).hide();
+                    showToast("Đã xóa profile thành công!", "success");
+                    setTimeout(() => {
+                        location.reload();
+                    }, 1000);
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    showToast(`Lỗi: ${error.message}`, "error");
+                })
+                .finally(() => {
+                    deleteBtn.innerHTML = originalText;
+                    deleteBtn.disabled = false;
+                });
+            });
+        });
 
         function showToast(message, type) {
             const toast = document.createElement('div');
             toast.classList.add('position-fixed', 'bottom-0', 'end-0', 'p-3');
             toast.style.zIndex = 1070;
 
-            const bgClass = type === 'success' ? 'bg-success' : 'bg-danger';
             toast.innerHTML = `
-                <div class="toast align-items-center text-white ${bgClass}" role="alert" aria-live="assertive" aria-atomic="true">
+                <div class="toast align-items-center text-white ${type === 'success' ? 'bg-success' : 'bg-danger'}" role="alert" aria-live="assertive" aria-atomic="true">
                     <div class="d-flex">
                         <div class="toast-body">
-                            <i class="bi bi-${type === 'success' ? 'check-circle-fill' : 'exclamation-triangle-fill'} me-2"></i>
                             ${message}
                         </div>
                         <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
@@ -184,9 +287,5 @@ else
             const toastEl = new bootstrap.Toast(toast.querySelector('.toast'), { delay: 3000 });
             toastEl.show();
         }
-
-        document.addEventListener('DOMContentLoaded', function() {
-            document.getElementById('confirmDeleteBtn').addEventListener('click', confirmDeleteGame);
-        });
     </script>
 }

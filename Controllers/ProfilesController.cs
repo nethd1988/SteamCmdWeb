@@ -1,26 +1,21 @@
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using SteamCmdWeb.Models;
 using SteamCmdWeb.Services;
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
-using System.Text.Json;
 using System.Threading.Tasks;
 
 namespace SteamCmdWeb.Controllers
 {
     [Route("api/profiles")]
     [ApiController]
-    [Authorize]
     public class ProfilesController : ControllerBase
     {
         private readonly AppProfileManager _profileManager;
         private readonly DecryptionService _decryptionService;
         private readonly ILogger<ProfilesController> _logger;
-        private readonly string _dataFolder;
 
         public ProfilesController(
             AppProfileManager profileManager,
@@ -30,7 +25,6 @@ namespace SteamCmdWeb.Controllers
             _profileManager = profileManager ?? throw new ArgumentNullException(nameof(profileManager));
             _decryptionService = decryptionService ?? throw new ArgumentNullException(nameof(decryptionService));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-            _dataFolder = Path.Combine(Directory.GetCurrentDirectory(), "Data");
         }
 
         /// <summary>
@@ -54,7 +48,7 @@ namespace SteamCmdWeb.Controllers
                             : new
                             {
                                 Username = _decryptionService.DecryptString(p.SteamUsername),
-                                Password = _decryptionService.DecryptString(p.SteamPassword)
+                                Password = "***HIDDEN***" // Không trả về mật khẩu
                             }
                     }).ToList();
                     return Ok(enhancedProfiles);
@@ -94,7 +88,7 @@ namespace SteamCmdWeb.Controllers
                         DecryptedInfo = new
                         {
                             Username = _decryptionService.DecryptString(profile.SteamUsername),
-                            Password = _decryptionService.DecryptString(profile.SteamPassword)
+                            Password = "***HIDDEN***" // Không trả về mật khẩu
                         }
                     };
                     return Ok(result);
@@ -134,7 +128,7 @@ namespace SteamCmdWeb.Controllers
                         DecryptedInfo = new
                         {
                             Username = _decryptionService.DecryptString(profile.SteamUsername),
-                            Password = _decryptionService.DecryptString(profile.SteamPassword)
+                            Password = "***HIDDEN***" // Không trả về mật khẩu
                         }
                     };
                     return Ok(result);
@@ -146,53 +140,6 @@ namespace SteamCmdWeb.Controllers
             {
                 _logger.LogError(ex, "Lỗi khi lấy profile có tên {ProfileName}", profileName);
                 return StatusCode(500, new { Error = "Lỗi khi lấy thông tin profile", Message = ex.Message });
-            }
-        }
-
-        /// <summary>
-        /// Lấy thông tin đăng nhập giải mã
-        /// </summary>
-        [HttpGet("{id:int}/credentials")]
-        public IActionResult GetDecryptedCredentials(int id)
-        {
-            try
-            {
-                var profile = _profileManager.GetProfileById(id);
-                if (profile == null)
-                {
-                    _logger.LogWarning("GetDecryptedCredentials: Không tìm thấy profile có ID {Id}", id);
-                    return NotFound(new { Error = "Không tìm thấy profile" });
-                }
-
-                _logger.LogInformation("GetDecryptedCredentials: Yêu cầu giải mã thông tin đăng nhập cho profile ID {Id}", id);
-
-                // Xác thực chỉ cho phép localhost hoặc cần quyền admin
-                if (!HttpContext.Request.Host.Host.Equals("localhost") && 
-                    !HttpContext.Request.Host.Host.Equals("127.0.0.1") &&
-                    !User.IsInRole("Admin"))
-                {
-                    _logger.LogWarning("GetDecryptedCredentials: Từ chối truy cập từ {Host} đến thông tin đăng nhập của profile {Id}", 
-                        HttpContext.Request.Host.Host, id);
-                    return Forbid("This operation is only allowed from localhost or for admin users");
-                }
-
-                if (profile.AnonymousLogin)
-                {
-                    return Ok(new { Message = "Profile này sử dụng đăng nhập ẩn danh (không có thông tin đăng nhập)" });
-                }
-
-                var credentials = new
-                {
-                    Username = _decryptionService.DecryptString(profile.SteamUsername),
-                    Password = _decryptionService.DecryptString(profile.SteamPassword)
-                };
-
-                return Ok(credentials);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Lỗi khi lấy thông tin đăng nhập cho profile {ProfileId}", id);
-                return StatusCode(500, new { Error = "Lỗi khi giải mã thông tin đăng nhập", Message = ex.Message });
             }
         }
 
@@ -216,7 +163,7 @@ namespace SteamCmdWeb.Controllers
                     return BadRequest(new { Error = "Tên và AppID là bắt buộc" });
                 }
 
-                _logger.LogInformation("CreateProfile: Nhận request thêm profile mới: {Name}, AppID: {AppID}", 
+                _logger.LogInformation("CreateProfile: Nhận request thêm profile mới: {Name}, AppID: {AppID}",
                     profile.Name, profile.AppID);
 
                 // Mã hóa thông tin đăng nhập nếu không phải đăng nhập ẩn danh
@@ -228,13 +175,9 @@ namespace SteamCmdWeb.Controllers
                     {
                         profile.SteamUsername = _decryptionService.EncryptString(profile.SteamUsername);
                     }
-                    
-                    if (!string.IsNullOrEmpty(profile.SteamPassword) &&
-                        !profile.SteamPassword.Contains("/") &&
-                        !profile.SteamPassword.Contains("="))
-                    {
-                        profile.SteamPassword = _decryptionService.EncryptString(profile.SteamPassword);
-                    }
+
+                    // Bỏ qua mật khẩu - không lưu
+                    profile.SteamPassword = "";
                 }
 
                 // Thiết lập trạng thái mặc định
@@ -245,9 +188,9 @@ namespace SteamCmdWeb.Controllers
                 profile.Pid = 0;
 
                 var result = _profileManager.AddProfile(profile);
-                
+
                 _logger.LogInformation("CreateProfile: Đã thêm profile mới với ID {Id}", result.Id);
-                
+
                 return CreatedAtAction(nameof(GetProfileById), new { id = result.Id }, result);
             }
             catch (Exception ex)
@@ -278,7 +221,7 @@ namespace SteamCmdWeb.Controllers
                     return NotFound(new { Error = "Không tìm thấy profile" });
                 }
 
-                _logger.LogInformation("UpdateProfile: Cập nhật profile ID {Id}: {Name}, AppID: {AppID}", 
+                _logger.LogInformation("UpdateProfile: Cập nhật profile ID {Id}: {Name}, AppID: {AppID}",
                     profile.Id, profile.Name, profile.AppID);
 
                 // Mã hóa thông tin đăng nhập nếu không phải đăng nhập ẩn danh
@@ -295,16 +238,8 @@ namespace SteamCmdWeb.Controllers
                         profile.SteamUsername = existingProfile.SteamUsername;
                     }
 
-                    if (!string.IsNullOrEmpty(profile.SteamPassword) &&
-                        !profile.SteamPassword.Contains("/") &&
-                        !profile.SteamPassword.Contains("="))
-                    {
-                        profile.SteamPassword = _decryptionService.EncryptString(profile.SteamPassword);
-                    }
-                    else if (string.IsNullOrEmpty(profile.SteamPassword))
-                    {
-                        profile.SteamPassword = existingProfile.SteamPassword;
-                    }
+                    // Giữ lại mật khẩu cũ
+                    profile.SteamPassword = existingProfile.SteamPassword;
                 }
 
                 // Giữ nguyên status nếu không được cập nhật
@@ -386,7 +321,7 @@ namespace SteamCmdWeb.Controllers
                     AppID = profile.AppID,
                     InstallDirectory = profile.InstallDirectory,
                     SteamUsername = profile.SteamUsername,
-                    SteamPassword = profile.SteamPassword,
+                    SteamPassword = profile.SteamPassword, // Giữ lại mật khẩu đã mã hóa
                     Arguments = profile.Arguments,
                     ValidateFiles = profile.ValidateFiles,
                     AutoRun = profile.AutoRun,
@@ -418,7 +353,7 @@ namespace SteamCmdWeb.Controllers
             try
             {
                 var profiles = _profileManager.GetAllProfiles();
-                
+
                 if (profiles.Count == 0)
                 {
                     _logger.LogWarning("BackupProfiles: Không có profiles để backup");
@@ -426,7 +361,7 @@ namespace SteamCmdWeb.Controllers
                 }
 
                 // Tạo thư mục backup nếu chưa tồn tại
-                string backupFolder = Path.Combine(_dataFolder, "Backup");
+                string backupFolder = Path.Combine(Directory.GetCurrentDirectory(), "Data", "Backup");
                 if (!Directory.Exists(backupFolder))
                 {
                     Directory.CreateDirectory(backupFolder);
@@ -438,15 +373,16 @@ namespace SteamCmdWeb.Controllers
                 string filePath = Path.Combine(backupFolder, fileName);
 
                 // Chuyển đổi và ghi file
-                var options = new JsonSerializerOptions { WriteIndented = true };
-                string jsonContent = JsonSerializer.Serialize(profiles, options);
+                var options = new System.Text.Json.JsonSerializerOptions { WriteIndented = true };
+                string jsonContent = System.Text.Json.JsonSerializer.Serialize(profiles, options);
                 await System.IO.File.WriteAllTextAsync(filePath, jsonContent);
 
-                _logger.LogInformation("BackupProfiles: Đã backup {Count} profiles vào file {FilePath}", 
+                _logger.LogInformation("BackupProfiles: Đã backup {Count} profiles vào file {FilePath}",
                     profiles.Count, filePath);
 
-                return Ok(new { 
-                    Success = true, 
+                return Ok(new
+                {
+                    Success = true,
                     Message = $"Đã sao lưu {profiles.Count} profiles vào file {fileName}",
                     FileName = fileName,
                     FilePath = filePath,

@@ -40,16 +40,16 @@ namespace SteamCmdWeb.Controllers
             {
                 var overview = _monitoringService.GetSystemOverview();
                 var profiles = _profileManager.GetAllProfiles();
-                
+
                 // Tính kích thước dữ liệu
                 long dataFolderSize = GetDirectorySize(new DirectoryInfo(_dataPath));
                 var dataSizeMB = dataFolderSize / (1024.0 * 1024);
-                
+
                 // Lấy thông tin version
                 var assembly = Assembly.GetExecutingAssembly();
                 var version = assembly.GetName().Version.ToString();
                 var buildDate = GetBuildDate(assembly);
-                
+
                 // Số lượng connections hiện tại
                 var connections = GetTcpConnections();
 
@@ -76,23 +76,11 @@ namespace SteamCmdWeb.Controllers
                         AnonymousProfiles = profiles.Count(p => p.AnonymousLogin),
                         LastModified = profiles.Any() ? profiles.Max(p => p.LastRun) : (DateTime?)null
                     },
-                    SystemResources = new
-                    {
-                        CurrentCpuUsage = Math.Round(overview.CurrentMetric?.SystemCpuUsage ?? 0, 2),
-                        CurrentMemoryUsageMB = overview.CurrentMetric?.ProcessMemoryUsageMB ?? 0,
-                        AvailableMemoryMB = Math.Round(overview.CurrentMetric?.SystemAvailableMemoryMB ?? 0, 2),
-                        DiskFreeGB = Math.Round(overview.CurrentMetric?.DiskFreeGB ?? 0, 2),
-                        DiskTotalGB = Math.Round(overview.CurrentMetric?.DiskTotalGB ?? 0, 2),
-                        DiskUsagePercent = Math.Round(overview.CurrentMetric?.DiskUsagePercent ?? 0, 2),
-                        AverageCpuUsage = Math.Round(overview.AverageSystemCpuUsage, 2),
-                        PeakCpuUsage = Math.Round(overview.PeakSystemCpuUsage, 2),
-                        PeakMemoryUsageMB = overview.PeakProcessMemoryUsageMB
-                    },
                     NetworkInfo = new
                     {
                         CurrentConnections = connections.Count,
                         LocalTcpPort = 61188,
-                        ExternalPort = 61188, // Thay đổi nếu có port forwarding
+                        ExternalPort = 61188,
                         ClientConnections = connections.Where(c => !c.LocalAddress.Contains("127.0.0.1")).Count()
                     },
                     Timestamp = DateTime.Now
@@ -101,60 +89,6 @@ namespace SteamCmdWeb.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error getting system status");
-                return StatusCode(500, new { Success = false, Message = $"Error: {ex.Message}" });
-            }
-        }
-
-        /// <summary>
-        /// Lấy thông tin metrics hệ thống
-        /// </summary>
-        [HttpGet("metrics")]
-        public IActionResult GetSystemMetrics(int minutes = 30)
-        {
-            try
-            {
-                // Lấy metrics gần đây
-                var allMetrics = _monitoringService.GetCurrentMetrics(minutes * 2); // Lấy 2 điểm mỗi phút
-                var filteredMetrics = allMetrics
-                    .Where(m => (DateTime.Now - m.Timestamp).TotalMinutes <= minutes)
-                    .ToList();
-
-                // Định dạng lại metrics để hiển thị
-                var formattedMetrics = filteredMetrics.Select(m => new
-                {
-                    Timestamp = m.Timestamp,
-                    ProcessCpu = Math.Round(m.ProcessCpuUsage, 2),
-                    SystemCpu = Math.Round(m.SystemCpuUsage, 2),
-                    MemoryMB = m.ProcessMemoryUsageMB,
-                    AvailableMemoryMB = Math.Round(m.SystemAvailableMemoryMB, 2),
-                    DiskFreeGB = Math.Round(m.DiskFreeGB, 2),
-                    DiskUsage = Math.Round(m.DiskUsagePercent, 2)
-                }).ToArray();
-
-                // Tạo danh sách thời gian cho charts
-                var timeLabels = formattedMetrics.Select(m => m.Timestamp.ToString("HH:mm:ss")).ToArray();
-                var cpuData = formattedMetrics.Select(m => m.SystemCpu).ToArray();
-                var memoryData = formattedMetrics.Select(m => m.MemoryMB).ToArray();
-                var diskData = formattedMetrics.Select(m => m.DiskUsage).ToArray();
-
-                return Ok(new
-                {
-                    Success = true,
-                    TimeRange = $"Last {minutes} minutes",
-                    DataPoints = formattedMetrics.Length,
-                    ChartData = new
-                    {
-                        Labels = timeLabels,
-                        CpuSeries = cpuData,
-                        MemorySeries = memoryData,
-                        DiskSeries = diskData
-                    },
-                    Details = formattedMetrics
-                });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting system metrics");
                 return StatusCode(500, new { Success = false, Message = $"Error: {ex.Message}" });
             }
         }
@@ -357,7 +291,7 @@ namespace SteamCmdWeb.Controllers
                                 var localParts = parts[1].Split(':');
                                 var remoteParts = parts[2].Split(':');
 
-                                if (localParts.Length >= 2 && remoteParts.Length >= 2 && 
+                                if (localParts.Length >= 2 && remoteParts.Length >= 2 &&
                                     int.TryParse(localParts[localParts.Length - 1], out int localPort) &&
                                     int.TryParse(remoteParts[remoteParts.Length - 1], out int remotePort))
                                 {

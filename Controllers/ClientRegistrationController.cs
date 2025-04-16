@@ -12,7 +12,6 @@ using SteamCmdWeb.Services;
 
 namespace SteamCmdWeb.Controllers
 {
-    // Định nghĩa lớp ClientRegistration ngay trong file này
     public class ClientRegistration
     {
         public string ClientId { get; set; }
@@ -87,7 +86,7 @@ namespace SteamCmdWeb.Controllers
         /// Đăng ký client mới
         /// </summary>
         [HttpPost("register")]
-        public async Task<IActionResult> RegisterClient([FromBody] ClientRegistration registration)
+        public IActionResult RegisterClient([FromBody] ClientRegistration registration)
         {
             try
             {
@@ -148,7 +147,7 @@ namespace SteamCmdWeb.Controllers
         /// Hủy đăng ký client
         /// </summary>
         [HttpPost("unregister/{clientId}")]
-        public async Task<IActionResult> UnregisterClient(string clientId)
+        public IActionResult UnregisterClient(string clientId)
         {
             try
             {
@@ -180,7 +179,7 @@ namespace SteamCmdWeb.Controllers
         /// Đặt trạng thái kích hoạt cho client
         /// </summary>
         [HttpPost("setactive/{clientId}")]
-        public async Task<IActionResult> SetClientActive(string clientId, [FromBody] bool isActive)
+        public IActionResult SetClientActive(string clientId, [FromBody] bool isActive)
         {
             try
             {

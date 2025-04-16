@@ -58,7 +58,7 @@ namespace SteamCmdWeb.Pages
             }
         }
 
-        public IActionResult OnPostAdd(string name, string appId, string installDirectory, string steamUsername, string steamPassword, string arguments, bool anonymousLogin)
+        public IActionResult OnPostAdd(string name, string appId, string installDirectory, string steamUsername, string arguments, bool anonymousLogin)
         {
             if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(appId) || string.IsNullOrEmpty(installDirectory))
             {
@@ -76,7 +76,7 @@ namespace SteamCmdWeb.Pages
                     AppID = appId,
                     InstallDirectory = installDirectory,
                     SteamUsername = steamUsername,
-                    SteamPassword = steamPassword,
+                    SteamPassword = "", // Không lưu mật khẩu
                     Arguments = arguments,
                     AnonymousLogin = anonymousLogin,
                     Status = "Ready",
@@ -101,7 +101,7 @@ namespace SteamCmdWeb.Pages
             }
         }
 
-        public IActionResult OnPostEdit(int id, string name, string appId, string installDirectory, string steamUsername, string steamPassword, string arguments, bool anonymousLogin)
+        public IActionResult OnPostEdit(int id, string name, string appId, string installDirectory, string steamUsername, string arguments, bool anonymousLogin)
         {
             if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(appId) || string.IsNullOrEmpty(installDirectory))
             {
@@ -127,7 +127,7 @@ namespace SteamCmdWeb.Pages
                     AppID = appId,
                     InstallDirectory = installDirectory,
                     SteamUsername = steamUsername,
-                    SteamPassword = steamPassword,
+                    SteamPassword = existingProfile.SteamPassword, // Giữ lại mật khẩu cũ
                     Arguments = arguments,
                     AnonymousLogin = anonymousLogin,
                     Status = existingProfile.Status,
