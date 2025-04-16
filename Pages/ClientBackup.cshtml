@@ -1,133 +1,94 @@
 @page
 @model SteamCmdWeb.Pages.ClientBackupModel
 @{
-    ViewData["Title"] = "Backup Profiles từ Client";
+    ViewData["Title"] = "Backup & Import Profiles";
 }
 
-<div class="card mb-4">
-    <div class="card-header d-flex justify-content-between align-items-center">
-        <h5 class="mb-0">
-            <i class="bi bi-cloud-download me-2"></i>
-            Backup & Import Profiles
-        </h5>
-        <button id="refreshBtn" class="btn btn-outline-primary btn-sm">
-            <i class="bi bi-arrow-clockwise me-1"></i> Làm mới
-        </button>
-    </div>
-    
-    <div class="card-body">
-        <div class="row mb-4">
-            <!-- Danh sách Backup -->
-            <div class="col-md-6">
-                <div class="card">
-                    <div class="card-header">
-                        <h6 class="mb-0">Danh sách Backup</h6>
-                    </div>
-                    <div class="card-body p-0">
-                        <div class="table-responsive">
-                            <table class="table table-hover mb-0">
-                                <thead>
-                                    <tr>
-                                        <th>Tên file</th>
-                                        <th>Thời gian</th>
-                                        <th>Kích thước</th>
-                                        <th>Xem</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="backupList">
-                                    <tr>
-                                        <td colspan="4" class="text-center">
-                                            <div class="spinner-border spinner-border-sm text-primary" role="status">
-                                                <span class="visually-hidden">Đang tải...</span>
-                                            </div>
-                                            <span class="ms-2">Đang tải...</span>
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="bi bi-cloud-download me-2"></i>
+                        Danh sách Backup
+                    </h5>
+                    <button id="refreshBtn" class="btn btn-outline-primary btn-sm">
+                        <i class="bi bi-arrow-clockwise me-1"></i> Làm mới
+                    </button>
                 </div>
-            </div>
-            
-            <!-- Upload Area -->
-            <div class="col-md-6">
-                <div class="card">
-                    <div class="card-header">
-                        <h6 class="mb-0">Client Profile Import</h6>
-                    </div>
-                    <div class="card-body">
-                        <div id="uploadArea" class="border border-dashed rounded p-4 text-center mb-3">
-                            <i class="bi bi-cloud-upload fs-2 text-muted"></i>
-                            <p class="mt-2 mb-0">Kéo thả file JSON hoặc nhấn vào đây để chọn file</p>
-                            <input type="file" id="fileUpload" accept=".json" hidden>
-                        </div>
-                        
-                        <div class="form-check mb-3">
-                            <input class="form-check-input" type="checkbox" id="skipDuplicateCheck">
-                            <label class="form-check-label" for="skipDuplicateCheck">Bỏ qua kiểm tra trùng lặp</label>
-                        </div>
-                        
-                        <div class="text-end">
-                            <button id="importAllBtn" class="btn btn-primary" disabled>
-                                <i class="bi bi-plus-circle me-1"></i> Import vào Profiles
-                            </button>
-                        </div>
+                <div class="card-body p-0">
+                    <div class="backup-list-container" style="max-height: 500px; overflow-y: auto;">
+                        <table class="table table-hover table-striped mb-0">
+                            <thead class="thead-dark sticky-top">
+                                <tr>
+                                    <th>Tên file</th>
+                                    <th>Thời gian</th>
+                                    <th>Kích thước</th>
+                                    <th class="text-center">Thao tác</th>
+                                </tr>
+                            </thead>
+                            <tbody id="backupList">
+                                <tr>
+                                    <td colspan="4" class="text-center">
+                                        <div class="spinner-border spinner-border-sm text-primary" role="status">
+                                            <span class="visually-hidden">Đang tải...</span>
+                                        </div>
+                                        <span class="ms-2">Đang tải danh sách backup...</span>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </div>
         </div>
-        
-        <!-- Profiles trong backup -->
-        <div class="card">
-            <div class="card-header">
-                <h6 class="mb-0">Profiles trong Backup</h6>
-            </div>
-            <div class="card-body">
-                <div id="profilesContainer">
-                    <div class="text-center py-4">
-                        <i class="bi bi-arrow-up-circle fs-3 d-block mb-2"></i>
-                        <p class="text-muted">Chọn một file backup hoặc tải lên file để xem danh sách profiles</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
 
-<!-- Modal xem thông tin chi tiết tài khoản -->
-<div class="modal fade" id="accountDetailsModal" tabindex="-1" aria-labelledby="accountDetailsModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content bg-dark">
-            <div class="modal-header">
-                <h5 class="modal-title" id="accountDetailsModalLabel">Thông tin tài khoản</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <div class="mb-3">
-                    <label class="form-label">Tên tài khoản:</label>
-                    <div class="input-group">
-                        <input type="text" class="form-control" id="accountUsername" readonly>
-                        <button class="btn btn-outline-secondary copy-btn" data-target="accountUsername">
-                            <i class="bi bi-clipboard"></i>
-                        </button>
-                    </div>
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="bi bi-cloud-upload me-2"></i>
+                        Client Profile Import
+                    </h5>
                 </div>
-                <div class="mb-3">
-                    <label class="form-label">Mật khẩu:</label>
-                    <div class="input-group">
-                        <input type="password" class="form-control" id="accountPassword" readonly>
-                        <button class="btn btn-outline-secondary" id="togglePassword">
-                            <i class="bi bi-eye"></i>
-                        </button>
-                        <button class="btn btn-outline-secondary copy-btn" data-target="accountPassword">
-                            <i class="bi bi-clipboard"></i>
+                <div class="card-body">
+                    <div id="uploadArea" class="border border-dashed rounded p-4 text-center mb-3">
+                        <i class="bi bi-cloud-upload fs-2 text-muted"></i>
+                        <p class="mt-2 mb-0">Kéo thả file JSON hoặc nhấn để chọn file</p>
+                        <input type="file" id="fileUpload" accept=".json" hidden>
+                    </div>
+                    
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" id="skipDuplicateCheck">
+                        <label class="form-check-label" for="skipDuplicateCheck">
+                            Bỏ qua kiểm tra trùng lặp
+                        </label>
+                    </div>
+                    
+                    <div class="text-end">
+                        <button id="importAllBtn" class="btn btn-primary" disabled>
+                            <i class="bi bi-plus-circle me-1"></i> Import vào Profiles
                         </button>
                     </div>
                 </div>
             </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Đóng</button>
+        </div>
+    </div>
+
+    <div class="card mt-3">
+        <div class="card-header">
+            <h5 class="mb-0">
+                <i class="bi bi-list-check me-2"></i>
+                Chi tiết Profiles trong Backup
+            </h5>
+        </div>
+        <div class="card-body">
+            <div id="profilesContainer">
+                <div class="text-center py-4">
+                    <i class="bi bi-arrow-up-circle fs-3 d-block mb-2"></i>
+                    <p class="text-muted">Chọn một file backup hoặc tải lên file để xem danh sách profiles</p>
+                </div>
             </div>
         </div>
     </div>
@@ -135,481 +96,488 @@
 
 @section Scripts {
 <script>
-    // Biến lưu trữ danh sách profiles
-    let currentProfiles = [];
-    
     document.addEventListener('DOMContentLoaded', function() {
-        loadBackupList();
-        
-        document.getElementById('refreshBtn').addEventListener('click', loadBackupList);
-        
         const uploadArea = document.getElementById('uploadArea');
         const fileUpload = document.getElementById('fileUpload');
-        
-        uploadArea.addEventListener('click', function() {
-            fileUpload.click();
-        });
-        
-        fileUpload.addEventListener('change', function() {
-            if (fileUpload.files.length > 0) {
-                handleFileUpload(fileUpload.files[0]);
-            }
-        });
-        
-        document.getElementById('importAllBtn').addEventListener('click', importSelectedProfiles);
-        
-        // Thêm sự kiện ẩn/hiện mật khẩu
-        document.getElementById('togglePassword').addEventListener('click', function() {
-            const passwordInput = document.getElementById('accountPassword');
-            const icon = this.querySelector('i');
-            
-            if (passwordInput.type === 'password') {
-                passwordInput.type = 'text';
-                icon.classList.remove('bi-eye');
-                icon.classList.add('bi-eye-slash');
-            } else {
-                passwordInput.type = 'password';
-                icon.classList.remove('bi-eye-slash');
-                icon.classList.add('bi-eye');
-            }
-        });
-        
-        // Thêm sự kiện sao chép vào clipboard
-        document.querySelectorAll('.copy-btn').forEach(button => {
-            button.addEventListener('click', function() {
-                const targetId = this.getAttribute('data-target');
-                const input = document.getElementById(targetId);
-                
-                input.select();
-                document.execCommand('copy');
-                
-                // Hiển thị thông báo đã sao chép
-                const icon = this.querySelector('i');
-                icon.classList.remove('bi-clipboard');
-                icon.classList.add('bi-clipboard-check');
-                
-                setTimeout(() => {
-                    icon.classList.remove('bi-clipboard-check');
-                    icon.classList.add('bi-clipboard');
-                }, 1500);
-            });
-        });
-    });
-    
-    // Tải danh sách backup
-    function loadBackupList() {
-        fetch('/api/backup')
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error(`HTTP error! Status: ${response.status}`);
-                }
-                return response.json();
-            })
-            .then(data => {
-                const tbody = document.getElementById('backupList');
-                tbody.innerHTML = '';
-                
-                if (!data || data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="4" class="text-center py-3">Chưa có backup nào</td></tr>';
-                    return;
-                }
-                
-                data.forEach(backup => {
-                    const tr = document.createElement('tr');
-                    tr.innerHTML = `
-                        <td>${backup.fileName}</td>
-                        <td>${new Date(backup.creationTime).toLocaleString()}</td>
-                        <td>${backup.sizeMB} MB</td>
-                        <td>
-                            <button type="button" class="btn btn-sm btn-outline-primary">
-                                <i class="bi bi-eye"></i> Xem
-                            </button>
-                        </td>
-                    `;
-                    
-                    tr.querySelector('button').addEventListener('click', function() {
-                        loadBackupProfiles(backup.fileName);
-                    });
-                    
-                    tbody.appendChild(tr);
-                });
-            })
-            .catch(error => {
-                console.error('Lỗi khi tải danh sách backup:', error);
-                document.getElementById('backupList').innerHTML = 
-                    '<tr><td colspan="4" class="text-center text-danger">Lỗi khi tải danh sách backup</td></tr>';
-            });
-    }
-    
-    // Tải profiles từ backup
-    function loadBackupProfiles(fileName) {
-        const container = document.getElementById('profilesContainer');
-        container.innerHTML = `
-            <div class="text-center py-4">
-                <div class="spinner-border text-primary" role="status"></div>
-                <p class="mt-2">Đang tải profiles...</p>
-            </div>
-        `;
-        
-        fetch(`/api/backup/load/${fileName}`)
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error(`HTTP error! Status: ${response.status}`);
-                }
-                return response.json();
-            })
-            .then(data => {
-                // Đảm bảo dữ liệu là một mảng
-                currentProfiles = Array.isArray(data) ? data : [];
-                
-                // Gỡ lỗi - kiểm tra cấu trúc dữ liệu
-                console.log('Loaded profiles:', currentProfiles);
-                
-                displayProfiles(currentProfiles);
-            })
-            .catch(error => {
-                console.error('Lỗi khi tải profiles:', error);
-                container.innerHTML = `
-                    <div class="alert alert-danger">
-                        <i class="bi bi-exclamation-triangle-fill me-2"></i>
-                        Không thể tải profiles từ backup: ${error.message}
-                    </div>
-                `;
-            });
-    }
-    
-    // Xử lý file upload
-    function handleFileUpload(file) {
-        if (!file || !file.name.endsWith('.json')) {
-            alert('Chỉ chấp nhận file JSON');
-            return;
-        }
-        
-        const container = document.getElementById('profilesContainer');
-        container.innerHTML = `
-            <div class="text-center py-4">
-                <div class="spinner-border text-primary" role="status"></div>
-                <p class="mt-2">Đang xử lý file...</p>
-            </div>
-        `;
-        
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            try {
-                const data = JSON.parse(e.target.result);
-                
-                // Đảm bảo dữ liệu là một mảng
-                currentProfiles = Array.isArray(data) ? data : [data];
-                
-                // Gỡ lỗi - kiểm tra cấu trúc dữ liệu
-                console.log('Uploaded profiles:', currentProfiles);
-                
-                // Lưu backup
-                if (currentProfiles.length > 0) {
-                    saveBackup(currentProfiles);
-                }
-                
-                // Hiển thị profiles
-                displayProfiles(currentProfiles);
-            } catch (error) {
-                console.error('Lỗi khi đọc file:', error);
-                container.innerHTML = `
-                    <div class="alert alert-danger">
-                        <i class="bi bi-exclamation-triangle-fill me-2"></i>
-                        Không thể đọc file JSON: ${error.message}
-                    </div>
-                `;
-            }
-        };
-        reader.readAsText(file);
-    }
-    
-    // Lưu backup lên server
-    function saveBackup(profiles) {
-        fetch('/api/backup/create', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(profiles)
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                // Reload backup list
-                loadBackupList();
-            }
-        })
-        .catch(error => {
-            console.error('Lỗi khi lưu backup:', error);
-        });
-    }
-    
-    // Hiển thị danh sách profiles
-    function displayProfiles(profiles) {
-        const container = document.getElementById('profilesContainer');
-        
-        if (!profiles || profiles.length === 0) {
-            container.innerHTML = '<div class="alert alert-info">Không có profiles nào</div>';
-            document.getElementById('importAllBtn').disabled = true;
-            return;
-        }
+        const refreshBtn = document.getElementById('refreshBtn');
 
-        // Tạo bảng hiển thị
-        let html = `
-            <div class="table-responsive">
-                <table class="table table-hover">
-                    <thead>
-                        <tr>
-                            <th style="width: 40px;"><input type="checkbox" id="selectAll" checked></th>
-                            <th>Tên</th>
-                            <th>App ID</th>
-                            <th>Tài khoản</th>
-                            <th>Thao tác</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-        `;
-        
-        profiles.forEach((profile, index) => {
-            // Kiểm tra nếu tên không tồn tại hoặc rỗng
-            const profileName = profile.Name || profile.name || 'Không xác định';
-            // Kiểm tra nếu App ID không tồn tại hoặc rỗng
-            const appId = profile.AppID || profile.appID || profile.app_id || 'Không xác định';
-            
-            // Kiểm tra trạng thái đăng nhập ẩn danh
-            const isAnonymous = profile.AnonymousLogin || profile.anonymousLogin || false;
-            
-            html += `
+        // Tải danh sách backup
+        function loadBackupList() {
+            const backupList = document.getElementById('backupList');
+            backupList.innerHTML = `
                 <tr>
-                    <td><input type="checkbox" class="profile-select" checked data-index="${index}"></td>
-                    <td>${profileName}</td>
-                    <td>${appId}</td>
-                    <td>
-                        ${isAnonymous ? 
-                            '<span class="badge bg-secondary">Ẩn danh</span>' : 
-                            '<button class="btn btn-sm btn-outline-info view-account-btn" data-index="' + index + '"><i class="bi bi-key me-1"></i>Xem thông tin</button>'
-                        }
-                    </td>
-                    <td>
-                        <div class="btn-group">
-                            <button class="btn btn-sm btn-primary add-btn" data-index="${index}">
-                                <i class="bi bi-plus-circle me-1"></i> Thêm
-                            </button>
-                            <button class="btn btn-sm btn-info copy-app-btn" data-index="${index}" title="Sao chép qua Game App Profile">
-                                <i class="bi bi-arrow-right-circle"></i>
-                            </button>
+                    <td colspan="4" class="text-center">
+                        <div class="spinner-border spinner-border-sm text-primary" role="status">
+                            <span class="visually-hidden">Đang tải...</span>
                         </div>
+                        <span class="ms-2">Đang tải danh sách backup...</span>
                     </td>
                 </tr>
             `;
-        });
-        
-        html += `
-                    </tbody>
-                </table>
-            </div>
-        `;
-        
-        container.innerHTML = html;
-        
-        // Thêm sự kiện cho các phần tử
-        document.getElementById('selectAll').addEventListener('change', function() {
-            const isChecked = this.checked;
-            document.querySelectorAll('.profile-select').forEach(checkbox => {
-                checkbox.checked = isChecked;
+
+            fetch('/api/backup')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! Status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    const backupList = document.getElementById('backupList');
+                    backupList.innerHTML = '';
+
+                    if (!data || data.length === 0) {
+                        backupList.innerHTML = `
+                            <tr>
+                                <td colspan="4" class="text-center text-muted py-3">
+                                    <i class="bi bi-info-circle me-2"></i>Chưa có backup nào
+                                </td>
+                            </tr>
+                        `;
+                        return;
+                    }
+
+                    data.forEach(backup => {
+                        const tr = document.createElement('tr');
+                        tr.innerHTML = `
+                            <td>${backup.fileName}</td>
+                            <td>${new Date(backup.creationTime).toLocaleString('vi-VN')}</td>
+                            <td>${backup.sizeMB.toFixed(2)} MB</td>
+                            <td class="text-center">
+                                <div class="btn-group btn-group-sm" role="group">
+                                    <button type="button" class="btn btn-info view-btn" data-filename="${backup.fileName}" title="Xem chi tiết">
+                                        <i class="bi bi-eye"></i>
+                                    </button>
+                                    <button type="button" class="btn btn-primary import-btn" data-filename="${backup.fileName}" title="Import">
+                                        <i class="bi bi-cloud-download"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        `;
+                        
+                        // Thêm sự kiện cho các nút
+                        tr.querySelector('.view-btn').addEventListener('click', () => loadBackupProfiles(backup.fileName));
+                        tr.querySelector('.import-btn').addEventListener('click', () => importBackup(backup.fileName));
+                        
+                        backupList.appendChild(tr);
+                    });
+                })
+                .catch(error => {
+                    console.error('Lỗi khi tải danh sách backup:', error);
+                    const backupList = document.getElementById('backupList');
+                    backupList.innerHTML = `
+                        <tr>
+                            <td colspan="4" class="text-center text-danger">
+                                <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                                Không thể tải danh sách backup
+                            </td>
+                        </tr>
+                    `;
+                });
+        }
+
+        // Tải profiles từ backup
+        function loadBackupProfiles(fileName) {
+            const container = document.getElementById('profilesContainer');
+            container.innerHTML = `
+                <div class="text-center py-4">
+                    <div class="spinner-border text-primary" role="status"></div>
+                    <p class="mt-2">Đang tải profiles...</p>
+                </div>
+            `;
+
+            fetch(`/api/backup/load/${fileName}`)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! Status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    // Đảm bảo dữ liệu là một mảng
+                    const profiles = Array.isArray(data) ? data : [];
+                    
+                    if (profiles.length === 0) {
+                        container.innerHTML = `
+                            <div class="alert alert-info text-center">
+                                <i class="bi bi-info-circle me-2"></i>
+                                Không có profiles trong backup này
+                            </div>
+                        `;
+                        return;
+                    }
+
+                    let html = `
+                        <div class="table-responsive">
+                            <table class="table table-hover table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>Tên Game</th>
+                                        <th>App ID</th>
+                                        <th>Thư mục</th>
+                                        <th>Tài khoản</th>
+                                        <th>Thao tác</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                    `;
+
+                    profiles.forEach((profile, index) => {
+                        const name = profile.Name || profile.name || 'Không xác định';
+                        const appId = profile.AppID || profile.appID || 'N/A';
+                        const installDir = profile.InstallDirectory || profile.installDirectory || 'N/A';
+                        const username = profile.SteamUsername || profile.steamUsername || 'Không có';
+
+                        html += `
+                            <tr>
+                                <td>${name}</td>
+                                <td>${appId}</td>
+                                <td>${installDir}</td>
+                                <td>${username}</td>
+                                <td>
+                                    <button class="btn btn-sm btn-primary import-profile-btn" data-index="${index}">
+                                        <i class="bi bi-cloud-download me-1"></i>Import
+                                    </button>
+                                </td>
+                            </tr>
+                        `;
+                    });
+
+                    html += `
+                                </tbody>
+                            </table>
+                        </div>
+                    `;
+
+                    container.innerHTML = html;
+
+                    // Thêm sự kiện cho các nút import profile
+                    container.querySelectorAll('.import-profile-btn').forEach(btn => {
+                        btn.addEventListener('click', () => {
+                            const index = btn.getAttribute('data-index');
+                            importSingleProfile(profiles[index]);
+                        });
+                    });
+                })
+                .catch(error => {
+                    console.error('Lỗi khi tải profiles:', error);
+                    container.innerHTML = `
+                        <div class="alert alert-danger text-center">
+                            <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                            Không thể tải profiles từ backup: ${error.message}
+                        </div>
+                    `;
+                });
+        }
+
+        // Import single profile
+        function importSingleProfile(profile) {
+            const skipDuplicateCheck = document.getElementById('skipDuplicateCheck').checked;
+
+            fetch(`/api/backup/migrate?skipDuplicateCheck=${skipDuplicateCheck}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify([profile])
+            })
+            .then(response => response.json())
+            .then(result => {
+                if (result.success) {
+                    showToast('success', `Đã import profile thành công. Thêm: ${result.added}, Bỏ qua: ${result.skipped}`);
+                } else {
+                    showToast('error', result.message || 'Lỗi khi import profile');
+                }
+            })
+            .catch(error => {
+                console.error('Lỗi:', error);
+                showToast('error', 'Không thể import profile');
             });
-            updateImportButton();
-        });
-        
-        document.querySelectorAll('.profile-select').forEach(checkbox => {
-            checkbox.addEventListener('change', updateImportButton);
-        });
-        
-        document.querySelectorAll('.add-btn').forEach(button => {
-            button.addEventListener('click', function() {
-                const index = parseInt(this.getAttribute('data-index'));
-                addSingleProfile(profiles[index]);
-            });
-        });
-        
-        document.querySelectorAll('.view-account-btn').forEach(button => {
-            button.addEventListener('click', function() {
-                const index = parseInt(this.getAttribute('data-index'));
-                showAccountDetails(profiles[index]);
-            });
-        });
-        
-        document.querySelectorAll('.copy-app-btn').forEach(button => {
-            button.addEventListener('click', function() {
-                const index = parseInt(this.getAttribute('data-index'));
-                copyToAppProfile(profiles[index]);
-            });
-        });
-        
-        updateImportButton();
-    }
-    
-    // Cập nhật nút Import
-    function updateImportButton() {
-        const checkboxes = document.querySelectorAll('.profile-select:checked');
-        const count = checkboxes.length;
-        
-        const importBtn = document.getElementById('importAllBtn');
-        importBtn.innerHTML = `<i class="bi bi-plus-circle me-1"></i> Import ${count} Profile${count !== 1 ? 's' : ''}`;
-        importBtn.disabled = count === 0;
-    }
-    
-    // Hiển thị thông tin tài khoản
-    function showAccountDetails(profile) {
-        if (!profile) return;
-        
-        // Chuẩn hóa tên thuộc tính để phù hợp với cả hai kiểu đặt tên
-        const profileName = profile.Name || profile.name || 'Không xác định';
-        const username = profile.SteamUsername || profile.steamUsername || '';
-        const password = profile.SteamPassword || profile.steamPassword || '';
-        
-        document.getElementById('accountDetailsModalLabel').textContent = `Thông tin tài khoản: ${profileName}`;
-        document.getElementById('accountUsername').value = username;
-        document.getElementById('accountPassword').value = password;
-        document.getElementById('accountPassword').type = 'password';
-        
-        const icon = document.querySelector('#togglePassword i');
-        icon.classList.remove('bi-eye-slash');
-        icon.classList.add('bi-eye');
-        
-        const modal = new bootstrap.Modal(document.getElementById('accountDetailsModal'));
-        modal.show();
-    }
-    
-    // Chuyển profile sang Game App Profiles
-    function copyToAppProfile(profile) {
-        if (!profile) return;
-        
-        // Chuyển hướng đến trang Game App Profiles
-        window.location.href = `/Profiles?copyProfile=${encodeURIComponent(JSON.stringify(profile))}`;
-    }
-    
-    // Thêm một profile
-    function addSingleProfile(profile) {
-        if (!profile) return;
-        
-        // Chuẩn hóa trường cho API
-        const data = {
-            Id: 0,
-            Name: profile.Name || profile.name || 'Không xác định',
-            AppID: profile.AppID || profile.appID || profile.app_id || 'Không xác định',
-            InstallDirectory: profile.InstallDirectory || profile.installDirectory || '',
-            SteamUsername: profile.SteamUsername || profile.steamUsername || '',
-            SteamPassword: profile.SteamPassword || profile.steamPassword || '',
-            Arguments: profile.Arguments || profile.arguments || '',
-            ValidateFiles: profile.ValidateFiles || profile.validateFiles || false,
-            AutoRun: profile.AutoRun || profile.autoRun || false,
-            AnonymousLogin: profile.AnonymousLogin || profile.anonymousLogin || false,
-            Status: "Ready"
-        };
-        
-        fetch('/api/profiles', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(data)
-        })
-        .then(response => {
-            if (!response.ok) {
-                throw new Error('Lỗi khi thêm profile');
-            }
-            return response.json();
-        })
-        .then(() => {
-            // Hiển thị thông báo thành công
-            const toast = document.createElement('div');
-            toast.classList.add('position-fixed', 'bottom-0', 'end-0', 'p-3');
-            toast.style.zIndex = 1070;
-            
-            toast.innerHTML = `
-                <div class="toast align-items-center text-white bg-success" role="alert" aria-live="assertive" aria-atomic="true">
+        }
+
+        // Hiển thị toast
+        function showToast(type, message) {
+            const toastContainer = document.createElement('div');
+            toastContainer.classList.add('position-fixed', 'bottom-0', 'end-0', 'p-3');
+            toastContainer.style.zIndex = 1070;
+
+            const toastClass = type === 'success' ? 'bg-success' : 'bg-danger';
+            const iconClass = type === 'success' ? 'bi-check-circle-fill' : 'bi-exclamation-triangle-fill';
+
+            toastContainer.innerHTML = `
+                <div class="toast align-items-center text-white ${toastClass}" role="alert">
                     <div class="d-flex">
                         <div class="toast-body">
-                            <i class="bi bi-check-circle-fill me-2"></i>
-                            Đã thêm profile "${data.Name}" thành công
+                            <i class="bi ${iconClass} me-2"></i>
+                            ${message}
                         </div>
                         <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
                     </div>
                 </div>
             `;
+
+            document.body.appendChild(toastContainer);
+            const toast = new bootstrap.Toast(toastContainer.querySelector('.toast'));
+            toast.show();
+        }
+
+        // Xử lý tải file
+        function handleFileUpload(file) {
+            if (!file || !file.name.endsWith('.json')) {
+                showToast('error', 'Chỉ chấp nhận file JSON');
+                return;
+            }
+
+            const container = document.getElementById('profilesContainer');
+            container.innerHTML = `
+                <div class="text-center py-4">
+                    <div class="spinner-border text-primary" role="status"></div>
+                    <p class="mt-2">Đang xử lý file...</p>
+                </div>
+            `;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    const profiles = Array.isArray(data) ? data : [data];
+
+                    // Hiển thị profiles
+                    displayUploadedProfiles(profiles);
+                } catch (error) {
+                    console.error('Lỗi khi đọc file:', error);
+                    container.innerHTML = `
+                        <div class="alert alert-danger text-center">
+                            <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                            Không thể đọc file JSON: ${error.message}
+                        </div>
+                    `;
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        // Hiển thị profiles đã tải lên
+        function displayUploadedProfiles(profiles) {
+            const container = document.getElementById('profilesContainer');
+            const importAllBtn = document.getElementById('importAllBtn');
             
-            document.body.appendChild(toast);
-            const toastEl = new bootstrap.Toast(toast.querySelector('.toast'), { delay: 3000 });
-            toastEl.show();
-        })
-        .catch(error => {
-            console.error('Lỗi:', error);
-            alert('Lỗi khi thêm profile: ' + error.message);
-        });
-    }
-    
-    // Import profiles đã chọn
-    function importSelectedProfiles() {
-        const checkboxes = document.querySelectorAll('.profile-select:checked');
-        
-        if (checkboxes.length === 0) {
-            alert('Vui lòng chọn ít nhất một profile');
-            return;
+            if (profiles.length === 0) {
+                container.innerHTML = `
+                    <div class="alert alert-info text-center">
+                        <i class="bi bi-info-circle me-2"></i>
+                        Không có profiles để import
+                    </div>
+                `;
+                importAllBtn.disabled = true;
+                return;
+            }
+
+            let html = `
+                <div class="table-responsive">
+                    <table class="table table-hover table-striped">
+                        <thead>
+                            <tr>
+                                <th style="width: 40px;">
+                                    <input type="checkbox" id="selectAllProfiles" checked>
+                                </th>
+                                <th>Tên Game</th>
+                                <th>App ID</th>
+                                <th>Thư mục</th>
+                                <th>Tài khoản</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+
+            profiles.forEach((profile, index) => {
+                const name = profile.Name || profile.name || 'Không xác định';
+                const appId = profile.AppID || profile.appID || profile.app_id || 'N/A';
+                const installDir = profile.InstallDirectory || profile.installDirectory || 'N/A';
+                const username = profile.SteamUsername || profile.steamUsername || 'Không có';
+                const isAnonymous = profile.AnonymousLogin || profile.anonymousLogin || false;
+
+                html += `
+                    <tr>
+                        <td>
+                            <input type="checkbox" class="profile-select" checked data-index="${index}">
+                        </td>
+                        <td>${name}</td>
+                        <td>${appId}</td>
+                        <td>${installDir}</td>
+                        <td>
+                            ${isAnonymous ? 
+                                '<span class="badge bg-secondary">Ẩn danh</span>' : 
+                                username
+                            }
+                        </td>
+                    </tr>
+                `;
+            });
+
+            html += `
+                        </tbody>
+                    </table>
+                </div>
+            `;
+
+            container.innerHTML = html;
+            importAllBtn.disabled = false;
+
+            // Xử lý chọn/bỏ chọn tất cả
+            const selectAllCheckbox = document.getElementById('selectAllProfiles');
+            const profileCheckboxes = document.querySelectorAll('.profile-select');
+
+            selectAllCheckbox.addEventListener('change', function() {
+                profileCheckboxes.forEach(checkbox => {
+                    checkbox.checked = this.checked;
+                });
+                updateImportButtonText();
+            });
+
+            profileCheckboxes.forEach(checkbox => {
+                checkbox.addEventListener('change', updateImportButtonText);
+            });
+
+            // Cập nhật văn bản nút import
+            function updateImportButtonText() {
+                const selectedCount = document.querySelectorAll('.profile-select:checked').length;
+                importAllBtn.innerHTML = `
+                    <i class="bi bi-plus-circle me-1"></i> Import ${selectedCount} Profile${selectedCount !== 1 ? 's' : ''}
+                `;
+                importAllBtn.disabled = selectedCount === 0;
+            }
+
+            // Thiết lập ban đầu
+            updateImportButtonText();
+
+            // Xử lý import tất cả
+            importAllBtn.onclick = importSelectedProfiles;
         }
-        
-        const selectedProfiles = [];
-        checkboxes.forEach(checkbox => {
-            const index = parseInt(checkbox.getAttribute('data-index'));
-            if (index >= 0 && index < currentProfiles.length) {
-                selectedProfiles.push(currentProfiles[index]);
+
+        // Import các profile đã chọn
+        function importSelectedProfiles() {
+            const selectedCheckboxes = document.querySelectorAll('.profile-select:checked');
+            const skipDuplicateCheck = document.getElementById('skipDuplicateCheck').checked;
+
+            if (selectedCheckboxes.length === 0) {
+                showToast('error', 'Vui lòng chọn ít nhất một profile');
+                return;
             }
-        });
-        
-        const skipDuplicateCheck = document.getElementById('skipDuplicateCheck').checked;
-        
-        // Xác nhận
-        if (!confirm(`Bạn có chắc muốn import ${selectedProfiles.length} profiles?`)) {
-            return;
+
+            // Thu thập các profile được chọn
+            const selectedProfiles = Array.from(selectedCheckboxes).map(checkbox => {
+                const index = parseInt(checkbox.getAttribute('data-index'));
+                return profiles[index];
+            });
+
+            // Hiển thị loading
+            const importBtn = document.getElementById('importAllBtn');
+            const originalHtml = importBtn.innerHTML;
+            importBtn.innerHTML = `
+                <span class="spinner-border spinner-border-sm" role="status"></span> 
+                Đang import...
+            `;
+            importBtn.disabled = true;
+
+            // Gửi request import
+            fetch(`/api/backup/migrate?skipDuplicateCheck=${skipDuplicateCheck}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(selectedProfiles)
+            })
+            .then(response => response.json())
+            .then(result => {
+                if (result.success) {
+                    showToast('success', `Import thành công: Thêm ${result.added}, Bỏ qua ${result.skipped}`);
+                    
+                    // Chuyển hướng hoặc làm mới danh sách
+                    setTimeout(() => {
+                        window.location.href = '/AppProfiles';
+                    }, 1500);
+                } else {
+                    showToast('error', result.message || 'Lỗi khi import profiles');
+                }
+            })
+            .catch(error => {
+                console.error('Lỗi:', error);
+                showToast('error', 'Không thể import profiles');
+            })
+            .finally(() => {
+                importBtn.innerHTML = originalHtml;
+                importBtn.disabled = false;
+            });
         }
-        
-        // Hiển thị loading
-        const importBtn = document.getElementById('importAllBtn');
-        const originalText = importBtn.innerHTML;
-        importBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span> Đang xử lý...';
-        importBtn.disabled = true;
-        
-        // Gửi request
-        fetch(`/api/backup/migrate?skipDuplicateCheck=${skipDuplicateCheck}`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(selectedProfiles)
-        })
-        .then(response => {
-            if (!response.ok) {
-                throw new Error('Lỗi khi import profiles');
+
+        // Sự kiện tải file
+        uploadArea.addEventListener('click', () => fileUpload.click());
+        fileUpload.addEventListener('change', function() {
+            if (this.files.length > 0) {
+                handleFileUpload(this.files[0]);
             }
-            return response.json();
-        })
-        .then(result => {
-            if (result.success) {
-                alert(`Import thành công: Đã thêm ${result.added}, Bỏ qua ${result.skipped}`);
-                window.location.href = '/Profiles';
-            } else {
-                alert('Lỗi: ' + result.message);
-            }
-        })
-        .catch(error => {
-            console.error('Lỗi:', error);
-            alert('Lỗi khi import profiles: ' + error.message);
-        })
-        .finally(() => {
-            importBtn.innerHTML = originalText;
-            importBtn.disabled = false;
         });
-    }
+
+        // Kéo và thả file
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('border-primary');
+        });
+
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('border-primary');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('border-primary');
+            
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleFileUpload(files[0]);
+            }
+        });
+
+        // Sự kiện làm mới
+        refreshBtn.addEventListener('click', loadBackupList);
+
+        // Khởi tạo
+        loadBackupList();
+    });
 </script>
+
+<style>
+    .backup-list-container {
+        scrollbar-width: thin;
+        scrollbar-color: #6c757d #343a40;
+    }
+
+    .backup-list-container::-webkit-scrollbar {
+        width: 10px;
+    }
+
+    .backup-list-container::-webkit-scrollbar-track {
+        background: #343a40;
+    }
+
+    .backup-list-container::-webkit-scrollbar-thumb {
+        background-color: #6c757d;
+        border-radius: 6px;
+        border: 3px solid #343a40;
+    }
+
+    .backup-list-container::-webkit-scrollbar-thumb:hover {
+        background-color: #495057;
+    }
+
+    #uploadArea {
+        transition: all 0.3s ease;
+    }
+
+    #uploadArea.border-primary {
+        border-color: #0d6efd !important;
+        background-color: rgba(13, 110, 253, 0.1);
+    }
+</style>
 }
