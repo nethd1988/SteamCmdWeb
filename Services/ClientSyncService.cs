@@ -21,7 +21,6 @@ namespace SteamCmdWeb.Services
         private int _failedSyncCount = 0;
         private DateTime _lastSyncTime = DateTime.MinValue;
         private int _lastSyncAddedCount = 0;
-        private int _lastSyncUpdatedCount = 0;
         private int _lastSyncErrorCount = 0;
         private bool _syncEnabled = true;
 
@@ -65,51 +64,40 @@ namespace SteamCmdWeb.Services
 
                 var existingProfile = _profileManager.GetProfileById(profile.Id);
 
-                await BackupProfileAsync(profile, clientIp);
+                if (existingProfile != null)
+                {
+                    // Profile đã tồn tại, bỏ qua
+                    await LogSyncAction($"Profile {profile.Name} (ID: {profile.Id}) already exists, skipped", clientIp);
+                    lock (_syncLock)
+                    {
+                        _successSyncCount++;
+                        _lastSyncTime = DateTime.Now;
+                    }
+                    return (true, $"Profile {profile.Name} already exists, skipped");
+                }
 
-                if (existingProfile == null)
+                // Thêm mới profile
+                await BackupProfileAsync(profile, clientIp);
+                _profileManager.AddProfile(profile);
+                await LogSyncAction($"Added profile {profile.Name} (ID: {profile.Id})", clientIp);
+                
+                lock (_syncLock)
                 {
-                    // Thêm mới profile
-                    _profileManager.AddProfile(profile);
-                    
-                    await LogSyncAction($"Added profile {profile.Name} (ID: {profile.Id})", clientIp);
-                    
-                    lock (_syncLock)
-                    {
-                        _successSyncCount++;
-                        _lastSyncTime = DateTime.Now;
-                        _lastSyncAddedCount++;
-                    }
-                    
-                    return (true, $"Profile {profile.Name} added successfully");
+                    _successSyncCount++;
+                    _lastSyncTime = DateTime.Now;
+                    _lastSyncAddedCount++;
                 }
-                else
-                {
-                    // Cập nhật profile
-                    _profileManager.UpdateProfile(profile);
-                    
-                    await LogSyncAction($"Updated profile {profile.Name} (ID: {profile.Id})", clientIp);
-                    
-                    lock (_syncLock)
-                    {
-                        _successSyncCount++;
-                        _lastSyncTime = DateTime.Now;
-                        _lastSyncUpdatedCount++;
-                    }
-                    
-                    return (true, $"Profile {profile.Name} updated successfully");
-                }
+                
+                return (true, $"Profile {profile.Name} added successfully");
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error receiving profile from {ClientIp}", clientIp);
-                
                 lock (_syncLock)
                 {
                     _failedSyncCount++;
                     _lastSyncErrorCount++;
                 }
-                
                 return (false, $"Error: {ex.Message}");
             }
         }
@@ -117,7 +105,7 @@ namespace SteamCmdWeb.Services
         /// <summary>
         /// Nhận một loạt profiles từ client
         /// </summary>
-        public async Task<(bool Success, string Message, int AddedCount, int UpdatedCount, int ErrorCount, List<int> ProcessedIds)> 
+        public async Task<(bool Success, string Message, int AddedCount, int SkippedCount, int ErrorCount, List<int> ProcessedIds)> 
             ReceiveProfilesAsync(List<ClientProfile> profiles, string clientIp)
         {
             if (!_syncEnabled)
@@ -132,8 +120,17 @@ namespace SteamCmdWeb.Services
 
             try
             {
+                if (profiles == null || profiles.Count == 0)
+                {
+                    lock (_syncLock)
+                    {
+                        _failedSyncCount++;
+                    }
+                    return (false, "No profiles to process", 0, 0, 0, new List<int>());
+                }
+
                 int addedCount = 0;
-                int updatedCount = 0;
+                int skippedCount = 0;
                 int errorCount = 0;
                 var processedIds = new List<int>();
 
@@ -155,10 +152,8 @@ namespace SteamCmdWeb.Services
                         }
                         else
                         {
-                            _profileManager.UpdateProfile(profile);
-                            updatedCount++;
-                            processedIds.Add(profile.Id);
-                            await LogSyncAction($"Updated profile {profile.Name} (ID: {profile.Id})", clientIp);
+                            skippedCount++;
+                            await LogSyncAction($"Profile {profile.Name} (ID: {profile.Id}) already exists, skipped", clientIp);
                         }
                     }
                     catch (Exception ex)
@@ -169,27 +164,23 @@ namespace SteamCmdWeb.Services
                     }
                 }
 
-                // Cập nhật thống kê
                 lock (_syncLock)
                 {
                     _successSyncCount++;
                     _lastSyncTime = DateTime.Now;
                     _lastSyncAddedCount = addedCount;
-                    _lastSyncUpdatedCount = updatedCount;
                     _lastSyncErrorCount = errorCount;
                 }
 
-                return (true, $"Processed {profiles.Count} profiles", addedCount, updatedCount, errorCount, processedIds);
+                return (true, $"Processed {profiles.Count} profiles", addedCount, skippedCount, errorCount, processedIds);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error receiving profile batch from {ClientIp}", clientIp);
-                
                 lock (_syncLock)
                 {
                     _failedSyncCount++;
                 }
-                
                 return (false, $"Error: {ex.Message}", 0, 0, profiles.Count, new List<int>());
             }
         }
@@ -197,7 +188,7 @@ namespace SteamCmdWeb.Services
         /// <summary>
         /// Xử lý full sync từ client
         /// </summary>
-        public async Task<(bool Success, string Message, int TotalCount, int AddedCount, int UpdatedCount, int ErrorCount)> 
+        public async Task<(bool Success, string Message, int TotalCount, int AddedCount, int SkippedCount, int ErrorCount)> 
             ProcessFullSyncAsync(string jsonProfiles, string clientIp)
         {
             if (!_syncEnabled)
@@ -232,7 +223,7 @@ namespace SteamCmdWeb.Services
                 await BackupFullSyncDataAsync(jsonProfiles, clientIp);
 
                 int addedCount = 0;
-                int updatedCount = 0;
+                int skippedCount = 0;
                 int errorCount = 0;
 
                 foreach (var profile in profiles)
@@ -250,9 +241,8 @@ namespace SteamCmdWeb.Services
                         }
                         else
                         {
-                            _profileManager.UpdateProfile(profile);
-                            updatedCount++;
-                            await LogSyncAction($"Updated profile {profile.Name} (ID: {profile.Id})", clientIp);
+                            skippedCount++;
+                            await LogSyncAction($"Profile {profile.Name} (ID: {profile.Id}) already exists, skipped", clientIp);
                         }
                     }
                     catch (Exception ex)
@@ -262,28 +252,24 @@ namespace SteamCmdWeb.Services
                     }
                 }
 
-                // Cập nhật thống kê
                 lock (_syncLock)
                 {
                     _successSyncCount++;
                     _lastSyncTime = DateTime.Now;
                     _lastSyncAddedCount = addedCount;
-                    _lastSyncUpdatedCount = updatedCount;
                     _lastSyncErrorCount = errorCount;
                 }
 
                 return (true, $"Full sync completed: {profiles.Count} profiles processed", 
-                    profiles.Count, addedCount, updatedCount, errorCount);
+                    profiles.Count, addedCount, skippedCount, errorCount);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error processing full sync from {ClientIp}", clientIp);
-                
                 lock (_syncLock)
                 {
                     _failedSyncCount++;
                 }
-                
                 return (false, $"Error: {ex.Message}", 0, 0, 0, 0);
             }
         }
@@ -306,7 +292,6 @@ namespace SteamCmdWeb.Services
         public Dictionary<string, object> GetSyncStatus()
         {
             Dictionary<string, object> status;
-            
             lock (_syncLock)
             {
                 status = new Dictionary<string, object>
@@ -316,13 +301,11 @@ namespace SteamCmdWeb.Services
                     { "SuccessSyncCount", _successSyncCount },
                     { "FailedSyncCount", _failedSyncCount },
                     { "LastSyncAddedCount", _lastSyncAddedCount },
-                    { "LastSyncUpdatedCount", _lastSyncUpdatedCount },
                     { "LastSyncErrorCount", _lastSyncErrorCount },
                     { "SyncEnabled", _syncEnabled },
                     { "CurrentTime", DateTime.Now }
                 };
             }
-            
             return status;
         }
 
@@ -333,7 +316,6 @@ namespace SteamCmdWeb.Services
         {
             string logFile = Path.Combine(_logPath, $"silentsync_{DateTime.Now:yyyyMMdd}.log");
             string logEntry = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} - {clientIp} - {message}{Environment.NewLine}";
-            
             await File.AppendAllTextAsync(logFile, logEntry);
         }
 
@@ -344,13 +326,7 @@ namespace SteamCmdWeb.Services
         {
             try
             {
-                string backupFolder = Path.Combine(
-                    Directory.GetCurrentDirectory(),
-                    "Data", 
-                    "Backup", 
-                    "SilentSync"
-                );
-                
+                string backupFolder = Path.Combine(Directory.GetCurrentDirectory(), "Data", "Backup", "SilentSync");
                 if (!Directory.Exists(backupFolder))
                 {
                     Directory.CreateDirectory(backupFolder);
@@ -368,7 +344,6 @@ namespace SteamCmdWeb.Services
             {
                 _logger.LogWarning(ex, "Error backing up profile {ProfileId} from {ClientIp}", 
                     profile.Id, clientIp);
-                // Không throw exception để không ảnh hưởng đến quá trình đồng bộ
             }
         }
 
@@ -379,18 +354,9 @@ namespace SteamCmdWeb.Services
         {
             try
             {
-                if (profiles == null || profiles.Count == 0)
-                {
-                    return;
-                }
+                if (profiles == null || profiles.Count == 0) return;
 
-                string backupFolder = Path.Combine(
-                    Directory.GetCurrentDirectory(),
-                    "Data", 
-                    "Backup", 
-                    "SilentSync"
-                );
-                
+                string backupFolder = Path.Combine(Directory.GetCurrentDirectory(), "Data", "Backup", "SilentSync");
                 if (!Directory.Exists(backupFolder))
                 {
                     Directory.CreateDirectory(backupFolder);
@@ -407,7 +373,6 @@ namespace SteamCmdWeb.Services
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Error backing up profiles batch from {ClientIp}", clientIp);
-                // Không throw exception để không ảnh hưởng đến quá trình đồng bộ
             }
         }
 
@@ -418,13 +383,7 @@ namespace SteamCmdWeb.Services
         {
             try
             {
-                string backupFolder = Path.Combine(
-                    Directory.GetCurrentDirectory(),
-                    "Data", 
-                    "Backup", 
-                    "FullSync"
-                );
-                
+                string backupFolder = Path.Combine(Directory.GetCurrentDirectory(), "Data", "Backup", "FullSync");
                 if (!Directory.Exists(backupFolder))
                 {
                     Directory.CreateDirectory(backupFolder);
@@ -439,7 +398,6 @@ namespace SteamCmdWeb.Services
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Error backing up full sync data from {ClientIp}", clientIp);
-                // Không throw exception để không ảnh hưởng đến quá trình đồng bộ
             }
         }
 
@@ -454,10 +412,8 @@ namespace SteamCmdWeb.Services
                 _successSyncCount = 0;
                 _failedSyncCount = 0;
                 _lastSyncAddedCount = 0;
-                _lastSyncUpdatedCount = 0;
                 _lastSyncErrorCount = 0;
             }
-            
             _logger.LogInformation("Sync statistics have been reset");
         }
     }

@@ -92,7 +92,7 @@ namespace SteamCmdWeb.Controllers
                     return BadRequest(new { Success = false, Message = "Quá nhiều profiles trong một request (tối đa: 100)" });
                 }
 
-                (bool success, string message, int added, int updated, int errors, List<int> processedIds) =
+                (bool success, string message, int added, int skipped, int errors, List<int> processedIds) =
                     await _silentSyncService.ReceiveProfilesAsync(profiles, clientIp);
 
                 if (success)
@@ -102,7 +102,7 @@ namespace SteamCmdWeb.Controllers
                         Success = true,
                         Message = message,
                         Added = added,
-                        Updated = updated,
+                        Skipped = skipped,
                         Errors = errors,
                         ProcessedIds = processedIds
                     });
@@ -114,7 +114,7 @@ namespace SteamCmdWeb.Controllers
                         Success = false,
                         Message = message,
                         Added = added,
-                        Updated = updated,
+                        Skipped = skipped,
                         Errors = errors
                     });
                 }
@@ -150,7 +150,7 @@ namespace SteamCmdWeb.Controllers
                     return BadRequest(new { Success = false, Message = "Body rỗng" });
                 }
 
-                (bool success, string message, int totalProfiles, int added, int updated, int errors) =
+                (bool success, string message, int totalProfiles, int added, int skipped, int errors) =
                     await _silentSyncService.ProcessFullSyncAsync(requestBody, clientIp);
 
                 if (success)
@@ -161,7 +161,7 @@ namespace SteamCmdWeb.Controllers
                         Message = message,
                         TotalProfiles = totalProfiles,
                         Added = added,
-                        Updated = updated,
+                        Skipped = skipped,
                         Errors = errors,
                         Timestamp = DateTime.Now
                     });
@@ -174,7 +174,7 @@ namespace SteamCmdWeb.Controllers
                         Message = message,
                         TotalProfiles = totalProfiles,
                         Added = added,
-                        Updated = updated,
+                        Skipped = skipped,
                         Errors = errors
                     });
                 }
@@ -274,12 +274,11 @@ namespace SteamCmdWeb.Controllers
 
                 string jsonProfiles = JsonSerializer.Serialize(profiles);
 
-                (bool success, string message, int totalCount, int addedCount, int updatedCount, int errorCount) =
+                (bool success, string message, int totalCount, int addedCount, int skippedCount, int errorCount) =
                     await _silentSyncService.ProcessFullSyncAsync(jsonProfiles, clientIp);
 
                 if (success)
                 {
-                    // Backup trước khi xử lý
                     await BackupReceivedProfiles(profiles, clientIp);
 
                     return Ok(new
@@ -290,7 +289,7 @@ namespace SteamCmdWeb.Controllers
                         Details = new
                         {
                             Added = addedCount,
-                            Updated = updatedCount,
+                            Skipped = skippedCount,
                             Errors = errorCount,
                             Total = totalCount,
                             Timestamp = DateTime.Now
@@ -305,7 +304,7 @@ namespace SteamCmdWeb.Controllers
                     Details = new
                     {
                         Added = addedCount,
-                        Updated = updatedCount,
+                        Skipped = skippedCount,
                         Errors = errorCount,
                         Total = totalCount
                     }
@@ -325,10 +324,7 @@ namespace SteamCmdWeb.Controllers
         {
             try
             {
-                if (profiles == null || profiles.Count == 0)
-                {
-                    return;
-                }
+                if (profiles == null || profiles.Count == 0) return;
 
                 string backupFolder = Path.Combine(_dataFolder, "Backup", "ClientSync");
                 if (!Directory.Exists(backupFolder))
@@ -342,7 +338,7 @@ namespace SteamCmdWeb.Controllers
 
                 var options = new JsonSerializerOptions { WriteIndented = true };
                 string jsonContent = JsonSerializer.Serialize(profiles, options);
-                await System.IO.File.WriteAllTextAsync(filePath, jsonContent);
+                await File.WriteAllTextAsync(filePath, jsonContent);
 
                 _logger.LogInformation("BackupReceivedProfiles: Đã sao lưu {Count} profiles từ {ClientIp} vào file {FileName}",
                     profiles.Count, clientIp, fileName);
@@ -350,7 +346,6 @@ namespace SteamCmdWeb.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Lỗi khi sao lưu profiles từ client {ClientIp}", clientIp);
-                // Không throw exception để không ảnh hưởng đến luồng xử lý chính
             }
         }
     }
