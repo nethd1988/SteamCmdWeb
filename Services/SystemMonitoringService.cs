@@ -1,8 +1,8 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -12,131 +12,123 @@ namespace SteamCmdWeb.Services
     public class SystemMonitoringService : BackgroundService
     {
         private readonly ILogger<SystemMonitoringService> _logger;
-        private readonly DateTime _processStartTime = DateTime.Now;
+        private readonly Process _currentProcess;
+        private readonly DateTime _startTime;
+        private readonly string _dotNetVersion;
+        private readonly string _osVersion;
+        private readonly int _processorCount;
 
         public SystemMonitoringService(ILogger<SystemMonitoringService> logger)
         {
-            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _logger = logger;
+            _currentProcess = Process.GetCurrentProcess();
+            _startTime = _currentProcess.StartTime;
+            _dotNetVersion = Environment.Version.ToString();
+            _osVersion = RuntimeInformation.OSDescription;
+            _processorCount = Environment.ProcessorCount;
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            _logger.LogInformation("System Monitoring Service đã khởi động");
+            _logger.LogInformation("Dịch vụ giám sát hệ thống đã khởi động");
 
-            while (!stoppingToken.IsCancellationRequested)
+            try
             {
-                try
+                while (!stoppingToken.IsCancellationRequested)
                 {
-                    await Task.Delay(TimeSpan.FromMinutes(15), stoppingToken); // Kiểm tra mỗi 15 phút
-                    LogSystemStatus();
+                    // Ghi log thông tin hệ thống mỗi giờ
+                    var overview = GetSystemOverview();
+                    _logger.LogInformation("Thông tin hệ thống - Uptime: {Uptime}, CPU: {CPU}%, RAM: {RAM}MB",
+                        overview.ServerUptime, overview.CpuUsage, overview.MemoryUsageMB);
+
+                    // Chờ 1 giờ trước khi kiểm tra lại
+                    await Task.Delay(TimeSpan.FromHours(1), stoppingToken);
                 }
-                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-                {
-                    // Khi service đang dừng, bỏ qua lỗi
-                    break;
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Lỗi khi ghi log trạng thái hệ thống");
-                }
+            }
+            catch (OperationCanceledException)
+            {
+                // Bình thường khi dừng dịch vụ
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi trong dịch vụ giám sát hệ thống");
             }
         }
 
         public SystemOverview GetSystemOverview()
         {
-            var overview = new SystemOverview
-            {
-                ServerUptime = DateTime.Now - _processStartTime,
-                ProcessStartTime = _processStartTime,
-                ProcessorCount = Environment.ProcessorCount,
-                WorkingSet = Process.GetCurrentProcess().WorkingSet64,
-                OperatingSystem = GetOperatingSystemInfo(),
-                DotNetVersion = Environment.Version.ToString(),
-                MachineName = Environment.MachineName
-            };
-
-            // Thêm thông tin đĩa
             try
             {
-                var currentDir = Directory.GetCurrentDirectory();
-                var driveInfo = new DriveInfo(Path.GetPathRoot(currentDir));
-                overview.DriveTotalSpace = driveInfo.TotalSize;
-                overview.DriveAvailableSpace = driveInfo.AvailableFreeSpace;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Không thể lấy thông tin ổ đĩa");
-            }
+                _currentProcess.Refresh();
 
-            return overview;
-        }
-
-        private string GetOperatingSystemInfo()
-        {
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-            {
-                return $"Windows {Environment.OSVersion.Version}";
-            }
-            else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
-            {
-                return $"Linux {Environment.OSVersion.Version}";
-            }
-            else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
-            {
-                return $"macOS {Environment.OSVersion.Version}";
-            }
-            else
-            {
-                return Environment.OSVersion.ToString();
-            }
-        }
-
-        private void LogSystemStatus()
-        {
-            try
-            {
-                var process = Process.GetCurrentProcess();
-                var uptime = DateTime.Now - _processStartTime;
-                var workingSet = process.WorkingSet64 / (1024 * 1024); // MB
-
-                _logger.LogInformation(
-                    "System Status - Uptime: {Uptime}, Working Set: {WorkingSet} MB, Threads: {Threads}, Handles: {Handles}",
-                    $"{uptime.Days}d {uptime.Hours}h {uptime.Minutes}m",
-                    workingSet,
-                    process.Threads.Count,
-                    process.HandleCount);
-
-                // Kiểm tra thư mục data
-                var dataFolder = Path.Combine(Directory.GetCurrentDirectory(), "Data");
-                if (Directory.Exists(dataFolder))
+                return new SystemOverview
                 {
-                    long dataSize = 0;
-                    var directory = new DirectoryInfo(dataFolder);
-                    foreach (var file in directory.GetFiles("*", SearchOption.AllDirectories))
-                    {
-                        dataSize += file.Length;
-                    }
-
-                    _logger.LogInformation("Data folder size: {Size} MB", dataSize / (1024 * 1024));
-                }
+                    ProcessStartTime = _startTime,
+                    ServerUptime = DateTime.Now - _startTime,
+                    CpuUsage = GetCpuUsage(),
+                    MemoryUsageMB = _currentProcess.WorkingSet64 / (1024 * 1024),
+                    ThreadCount = _currentProcess.Threads.Count,
+                    DotNetVersion = _dotNetVersion,
+                    OperatingSystem = _osVersion,
+                    ProcessorCount = _processorCount
+                };
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Lỗi khi ghi log trạng thái hệ thống");
+                _logger.LogError(ex, "Lỗi khi lấy thông tin hệ thống");
+
+                return new SystemOverview
+                {
+                    ProcessStartTime = _startTime,
+                    ServerUptime = DateTime.Now - _startTime,
+                    CpuUsage = 0,
+                    MemoryUsageMB = 0,
+                    ThreadCount = 0,
+                    DotNetVersion = _dotNetVersion,
+                    OperatingSystem = _osVersion,
+                    ProcessorCount = _processorCount
+                };
+            }
+        }
+
+        private double GetCpuUsage()
+        {
+            try
+            {
+                var startCpuUsage = _currentProcess.TotalProcessorTime;
+                var startTime = DateTime.UtcNow;
+
+                // Chờ 100ms để đo
+                Thread.Sleep(100);
+
+                _currentProcess.Refresh();
+                var endCpuUsage = _currentProcess.TotalProcessorTime;
+                var endTime = DateTime.UtcNow;
+
+                var cpuUsedMs = (endCpuUsage - startCpuUsage).TotalMilliseconds;
+                var totalMsPassed = (endTime - startTime).TotalMilliseconds;
+
+                var cpuUsageTotal = cpuUsedMs / (Environment.ProcessorCount * totalMsPassed);
+
+                return Math.Round(cpuUsageTotal * 100, 2);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi tính toán CPU usage");
+                return 0;
             }
         }
     }
 
     public class SystemOverview
     {
-        public TimeSpan ServerUptime { get; set; }
         public DateTime ProcessStartTime { get; set; }
-        public int ProcessorCount { get; set; }
-        public long WorkingSet { get; set; }
-        public string OperatingSystem { get; set; }
+        public TimeSpan ServerUptime { get; set; }
+        public double CpuUsage { get; set; }
+        public long MemoryUsageMB { get; set; }
+        public int ThreadCount { get; set; }
         public string DotNetVersion { get; set; }
-        public string MachineName { get; set; }
-        public long DriveTotalSpace { get; set; }
-        public long DriveAvailableSpace { get; set; }
+        public string OperatingSystem { get; set; }
+        public int ProcessorCount { get; set; }
     }
 }

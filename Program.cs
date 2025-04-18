@@ -3,6 +3,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using SteamCmdWeb.Services;
+using System;
+using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -19,12 +21,16 @@ builder.Services.AddControllers()
         options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
     });
 
+// Xóa nội dung hiện tại và thêm cấu hình đơn giản
 builder.Services.AddRazorPages();
 
 // Đăng ký các dịch vụ tùy chỉnh
 builder.Services.AddSingleton<ProfileService>();
 builder.Services.AddSingleton<DecryptionService>();
 builder.Services.AddSingleton<SystemMonitoringService>();
+builder.Services.AddSingleton<AppProfileManager>();
+builder.Services.AddSingleton<ProfileMigrationService>();
+builder.Services.AddSingleton<SilentSyncService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<SystemMonitoringService>());
 builder.Services.AddHostedService<TcpServerService>();
 
@@ -60,17 +66,32 @@ app.MapControllers();
 app.MapRazorPages();
 
 // Tạo các thư mục cần thiết
-var dataFolder = System.IO.Path.Combine(app.Environment.ContentRootPath, "Data");
-if (!System.IO.Directory.Exists(dataFolder))
+var dataFolder = Path.Combine(app.Environment.ContentRootPath, "Data");
+if (!Directory.Exists(dataFolder))
 {
-    System.IO.Directory.CreateDirectory(dataFolder);
+    Directory.CreateDirectory(dataFolder);
     app.Logger.LogInformation("Đã tạo thư mục Data");
 }
 
-var profilesFilePath = System.IO.Path.Combine(dataFolder, "profiles.json");
-if (!System.IO.File.Exists(profilesFilePath))
+// Đảm bảo các thư mục cần thiết đều tồn tại
+var backupFolder = Path.Combine(dataFolder, "Backup");
+if (!Directory.Exists(backupFolder))
 {
-    System.IO.File.WriteAllText(profilesFilePath, "[]");
+    Directory.CreateDirectory(backupFolder);
+    app.Logger.LogInformation("Đã tạo thư mục Backup");
+}
+
+var logsFolder = Path.Combine(dataFolder, "Logs");
+if (!Directory.Exists(logsFolder))
+{
+    Directory.CreateDirectory(logsFolder);
+    app.Logger.LogInformation("Đã tạo thư mục Logs");
+}
+
+var profilesFilePath = Path.Combine(dataFolder, "profiles.json");
+if (!File.Exists(profilesFilePath))
+{
+    File.WriteAllText(profilesFilePath, "[]");
     app.Logger.LogInformation("Đã tạo file profiles.json trống");
 }
 

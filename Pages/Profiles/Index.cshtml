@@ -119,7 +119,7 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Hủy</button>
-                <form id="deleteForm" method="post">
+                <form id="deleteForm" method="post" asp-page-handler="Delete">
                     <input type="hidden" id="profileIdToDelete" name="id" />
                     <button type="submit" class="btn btn-danger">Xóa</button>
                 </form>
@@ -140,7 +140,6 @@
                     
                     document.getElementById('profileIdToDelete').value = profileId;
                     document.getElementById('profileNameToDelete').innerText = profileName;
-                    document.getElementById('deleteForm').action = `/Profiles/Delete?id=${profileId}`;
                     
                     const deleteModal = new bootstrap.Modal(document.getElementById('deleteConfirmModal'));
                     deleteModal.show();
