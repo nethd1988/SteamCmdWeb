@@ -37,12 +37,6 @@ namespace SteamCmdWeb.Services
 
         public async Task<List<ClientProfile>> GetAllProfilesAsync()
         {
-            // Kiểm tra cache trước
-            if (_cache.TryGetValue(CacheKey, out List<ClientProfile> profiles))
-            {
-                return profiles;
-            }
-
             try
             {
                 if (!File.Exists(_profilesFilePath))
@@ -51,11 +45,7 @@ namespace SteamCmdWeb.Services
                 }
 
                 string json = await File.ReadAllTextAsync(_profilesFilePath);
-                profiles = JsonSerializer.Deserialize<List<ClientProfile>>(json) ?? new List<ClientProfile>();
-
-                // Lưu vào cache với thời gian tồn tại 5 phút
-                _cache.Set(CacheKey, profiles, TimeSpan.FromMinutes(5));
-
+                var profiles = JsonSerializer.Deserialize<List<ClientProfile>>(json) ?? new List<ClientProfile>();
                 return profiles;
             }
             catch (Exception ex)
