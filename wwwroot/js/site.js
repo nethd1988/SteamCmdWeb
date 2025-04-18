@@ -1,146 +1,90 @@
-﻿// Tiện ích chung cho SteamCmdWeb
+﻿// SteamCmdWeb site JavaScript
 
-// Khởi tạo tooltips
-document.addEventListener('DOMContentLoaded', function () {
-    // Khởi tạo tất cả các tooltips
-    const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
-    const tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
-        return new bootstrap.Tooltip(tooltipTriggerEl);
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('SteamCmdWeb loaded');
+    
+    // Initialize tooltips
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    tooltipTriggerList.forEach(function(tooltipTriggerEl) {
+        new bootstrap.Tooltip(tooltipTriggerEl);
     });
-
-    // Khởi tạo toasts
-    const toastElList = [].slice.call(document.querySelectorAll('.toast'));
-    const toastList = toastElList.map(function (toastEl) {
-        return new bootstrap.Toast(toastEl);
+    
+    // Initialize popovers
+    var popoverTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="popover"]'));
+    popoverTriggerList.forEach(function(popoverTriggerEl) {
+        new bootstrap.Popover(popoverTriggerEl);
+    });
+    
+    // Highlight active page in navbar
+    const currentPath = window.location.pathname;
+    document.querySelectorAll('.navbar-nav .nav-link').forEach(link => {
+        const linkPath = link.getAttribute('href');
+        if (currentPath === linkPath || (linkPath !== '/' && currentPath.startsWith(linkPath))) {
+            link.classList.add('active');
+            link.setAttribute('aria-current', 'page');
+        }
+    });
+    
+    // Confirm dialogs for dangerous actions
+    document.querySelectorAll('.confirm-action').forEach(element => {
+        element.addEventListener('click', function(e) {
+            if (!confirm(this.getAttribute('data-confirm-message') || 'Bạn có chắc chắn không?')) {
+                e.preventDefault();
+                return false;
+            }
+        });
     });
 });
 
-// Hiển thị toast thông báo
-function showToast(message, type = 'success', duration = 5000) {
-    const container = document.getElementById('toastContainer') || document.body;
-    const toastId = 'toast-' + Date.now();
+// Function to format bytes to human-readable format
+function formatBytes(bytes, decimals = 2) {
+    if (bytes === 0) return '0 Bytes';
     
-    let bgClass = 'bg-success';
-    let icon = 'bi-check-circle-fill';
+    const k = 1024;
+    const dm = decimals < 0 ? 0 : decimals;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
     
-    if (type === 'error') {
-        bgClass = 'bg-danger';
-        icon = 'bi-exclamation-triangle-fill';
-    } else if (type === 'warning') {
-        bgClass = 'bg-warning';
-        icon = 'bi-exclamation-circle-fill';
-    } else if (type === 'info') {
-        bgClass = 'bg-info';
-        icon = 'bi-info-circle-fill';
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+}
+
+// Function to show toasts
+function showToast(message, type = 'success') {
+    const toastContainer = document.getElementById('toast-container');
+    if (!toastContainer) {
+        const container = document.createElement('div');
+        container.id = 'toast-container';
+        container.className = 'toast-container position-fixed bottom-0 end-0 p-3';
+        document.body.appendChild(container);
     }
     
-    const toast = document.createElement('div');
-    toast.classList.add('toast', 'fade-in');
-    toast.setAttribute('id', toastId);
-    toast.setAttribute('role', 'alert');
-    toast.setAttribute('aria-live', 'assertive');
-    toast.setAttribute('aria-atomic', 'true');
+    const toastElement = document.createElement('div');
+    toastElement.className = `toast align-items-center text-white bg-${type} border-0`;
+    toastElement.setAttribute('role', 'alert');
+    toastElement.setAttribute('aria-live', 'assertive');
+    toastElement.setAttribute('aria-atomic', 'true');
     
-    toast.innerHTML = `
-        <div class="toast-header ${bgClass} text-white">
-            <i class="bi ${icon} me-2"></i>
-            <strong class="me-auto">Thông báo</strong>
-            <small>Vừa xong</small>
-            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast" aria-label="Close"></button>
-        </div>
-        <div class="toast-body">
-            ${message}
+    toastElement.innerHTML = `
+        <div class="d-flex">
+            <div class="toast-body">
+                ${message}
+            </div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
         </div>
     `;
     
-    container.appendChild(toast);
+    document.getElementById('toast-container').appendChild(toastElement);
     
-    const bsToast = new bootstrap.Toast(toast, {
-        delay: duration
+    const toast = new bootstrap.Toast(toastElement, {
+        autohide: true,
+        delay: 5000
     });
     
-    bsToast.show();
+    toast.show();
     
-    // Tự động xóa toast sau khi ẩn
-    toast.addEventListener('hidden.bs.toast', function () {
-        toast.remove();
+    // Remove toast from DOM after it's hidden
+    toastElement.addEventListener('hidden.bs.toast', function() {
+        toastElement.remove();
     });
-    
-    return bsToast;
-}
-
-// Cắt ngắn văn bản quá dài
-function truncateText(text, maxLength) {
-    if (!text) return '';
-    return text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
-}
-
-// Format date từ ISO string
-function formatDate(dateString) {
-    if (!dateString) return 'N/A';
-    
-    try {
-        const date = new Date(dateString);
-        return date.toLocaleString('vi-VN');
-    } catch (e) {
-        console.warn('Lỗi định dạng ngày:', e);
-        return dateString;
-    }
-}
-
-// Copy text to clipboard
-function copyToClipboard(text) {
-    return navigator.clipboard.writeText(text)
-        .then(() => {
-            showToast('Đã sao chép vào clipboard', 'success');
-            return true;
-        })
-        .catch(err => {
-            console.error('Lỗi khi sao chép vào clipboard:', err);
-            showToast('Không thể sao chép vào clipboard', 'error');
-            return false;
-        });
-}
-
-// Gửi request lên server với xử lý lỗi
-async function fetchWithErrorHandling(url, options = {}) {
-    try {
-        const response = await fetch(url, options);
-        
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => null);
-            throw new Error(errorData?.message || `HTTP error! Status: ${response.status}`);
-        }
-        
-        return await response.json();
-    } catch (error) {
-        console.error('Fetch error:', error);
-        showToast(error.message || 'Đã xảy ra lỗi khi gửi yêu cầu', 'error');
-        throw error;
-    }
-}
-
-// Chọn tất cả checkboxes trong bảng
-function toggleSelectAll(tableId, checked) {
-    const table = document.getElementById(tableId);
-    if (!table) return;
-    
-    const checkboxes = table.querySelectorAll('input[type="checkbox"]');
-    checkboxes.forEach(checkbox => {
-        checkbox.checked = checked;
-    });
-}
-
-// Tạo hiệu ứng loading cho button
-function setButtonLoading(button, isLoading, originalText = null) {
-    if (isLoading) {
-        const loadingText = button.getAttribute('data-loading-text') || 'Đang xử lý...';
-        button.setAttribute('data-original-text', button.innerHTML);
-        button.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> ${loadingText}`;
-        button.disabled = true;
-    } else {
-        button.innerHTML = originalText || button.getAttribute('data-original-text') || button.innerHTML;
-        button.disabled = false;
-        button.removeAttribute('data-original-text');
-    }
 }

@@ -1,0 +1,130 @@
+@page
+@model SteamCmdWeb.Pages.Profiles.CreateModel
+@{
+    ViewData["Title"] = "Tạo Profile Mới";
+}
+
+<div class="container">
+    <div class="mb-4">
+        <h1>Tạo Profile Mới</h1>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="/">Trang chủ</a></li>
+                <li class="breadcrumb-item"><a href="/Profiles">Profiles</a></li>
+                <li class="breadcrumb-item active">Tạo mới</li>
+            </ol>
+        </nav>
+    </div>
+
+    @if (!string.IsNullOrEmpty(Model.ErrorMessage))
+    {
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            @Model.ErrorMessage
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    }
+
+    <div class="card">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">
+                <i class="bi bi-plus-circle me-2"></i>
+                Thông tin profile mới
+            </h5>
+        </div>
+        <div class="card-body">
+            <form method="post">
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label asp-for="Profile.Name" class="form-label">Tên profile <span class="text-danger">*</span></label>
+                        <input asp-for="Profile.Name" class="form-control" required />
+                        <span asp-validation-for="Profile.Name" class="text-danger"></span>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label asp-for="Profile.AppID" class="form-label">App ID <span class="text-danger">*</span></label>
+                        <input asp-for="Profile.AppID" class="form-control" required />
+                        <div class="form-text">ID của game trên Steam (VD: 730 cho CS:GO)</div>
+                        <span asp-validation-for="Profile.AppID" class="text-danger"></span>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label asp-for="Profile.InstallDirectory" class="form-label">Thư mục cài đặt <span class="text-danger">*</span></label>
+                    <input asp-for="Profile.InstallDirectory" class="form-control" required />
+                    <div class="form-text">Đường dẫn đầy đủ tới thư mục cài đặt game</div>
+                    <span asp-validation-for="Profile.InstallDirectory" class="text-danger"></span>
+                </div>
+
+                <div class="mb-3">
+                    <label asp-for="Profile.Arguments" class="form-label">Tham số bổ sung</label>
+                    <input asp-for="Profile.Arguments" class="form-control" />
+                    <div class="form-text">Các tham số bổ sung cho SteamCMD (không bắt buộc)</div>
+                    <span asp-validation-for="Profile.Arguments" class="text-danger"></span>
+                </div>
+
+                <div class="mb-3 form-check">
+                    <input asp-for="Profile.AnonymousLogin" class="form-check-input" id="anonymousLogin" />
+                    <label asp-for="Profile.AnonymousLogin" class="form-check-label">Sử dụng đăng nhập ẩn danh</label>
+                    <div class="form-text">Chọn nếu game có thể tải về mà không cần tài khoản Steam</div>
+                </div>
+
+                <div id="loginCredentials" class="card mb-3 @(Model.Profile.AnonymousLogin ? "d-none" : "")">
+                    <div class="card-header bg-info text-white">
+                        <h6 class="mb-0">Thông tin đăng nhập</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="Profile_SteamUsername" class="form-label">Tên đăng nhập</label>
+                                <input asp-for="Profile.SteamUsername" class="form-control" />
+                                <span asp-validation-for="Profile.SteamUsername" class="text-danger"></span>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="Profile_SteamPassword" class="form-label">Mật khẩu</label>
+                                <input asp-for="Profile.SteamPassword" type="password" class="form-control" />
+                                <span asp-validation-for="Profile.SteamPassword" class="text-danger"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <div class="form-check">
+                            <input asp-for="Profile.ValidateFiles" class="form-check-input" />
+                            <label asp-for="Profile.ValidateFiles" class="form-check-label">Kiểm tra tính toàn vẹn của file</label>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-check">
+                            <input asp-for="Profile.AutoRun" class="form-check-input" />
+                            <label asp-for="Profile.AutoRun" class="form-check-label">Tự động chạy khi khởi động</label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="d-flex justify-content-end">
+                    <a href="/Profiles" class="btn btn-secondary me-2">Hủy</a>
+                    <button type="submit" class="btn btn-primary">Tạo profile</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const anonymousLogin = document.getElementById('anonymousLogin');
+            const loginCredentials = document.getElementById('loginCredentials');
+            
+            anonymousLogin.addEventListener('change', function() {
+                if (this.checked) {
+                    loginCredentials.classList.add('d-none');
+                } else {
+                    loginCredentials.classList.remove('d-none');
+                }
+            });
+        });
+    </script>
+}

@@ -1,0 +1,151 @@
+@page
+@model SteamCmdWeb.Pages.Profiles.IndexModel
+@{
+    ViewData["Title"] = "Quản lý Profiles";
+}
+
+<div class="container">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>Quản lý Profiles</h1>
+        <a href="/Profiles/Create" class="btn btn-primary">
+            <i class="bi bi-plus-circle me-2"></i>
+            Thêm Profile mới
+        </a>
+    </div>
+
+    @if (TempData["SuccessMessage"] != null)
+    {
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            @TempData["SuccessMessage"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    }
+
+    @if (TempData["ErrorMessage"] != null)
+    {
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            @TempData["ErrorMessage"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    }
+
+    <div class="card">
+        <div class="card-header bg-dark text-white">
+            <h5 class="mb-0">
+                <i class="bi bi-list-check me-2"></i>
+                Danh sách Profiles
+            </h5>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-striped table-hover mb-0">
+                    <thead class="table-dark">
+                        <tr>
+                            <th scope="col">ID</th>
+                            <th scope="col">Tên</th>
+                            <th scope="col">App ID</th>
+                            <th scope="col">Thư mục cài đặt</th>
+                            <th scope="col">Loại đăng nhập</th>
+                            <th scope="col" class="text-center">Thao tác</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (Model.Profiles.Count == 0)
+                        {
+                            <tr>
+                                <td colspan="6" class="text-center py-3">
+                                    <i class="bi bi-info-circle me-2"></i>
+                                    Không có profile nào trong hệ thống
+                                </td>
+                            </tr>
+                        }
+                        else
+                        {
+                            @foreach (var profile in Model.Profiles)
+                            {
+                                <tr>
+                                    <td>@profile.Id</td>
+                                    <td>@profile.Name</td>
+                                    <td>@profile.AppID</td>
+                                    <td class="text-truncate" style="max-width: 200px;">@profile.InstallDirectory</td>
+                                    <td>
+                                        @if (profile.AnonymousLogin)
+                                        {
+                                            <span class="badge bg-secondary">Ẩn danh</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-info">Tài khoản</span>
+                                        }
+                                    </td>
+                                    <td class="text-center">
+                                        <a href="/Profiles/Details/@profile.Id" class="btn btn-sm btn-info">
+                                            <i class="bi bi-eye"></i>
+                                        </a>
+                                        <a href="/Profiles/Edit/@profile.Id" class="btn btn-sm btn-primary">
+                                            <i class="bi bi-pencil"></i>
+                                        </a>
+                                       <button type="button" class="btn btn-sm btn-danger delete-btn" data-id="@profile.Id" data-name="@profile.Name">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Xác nhận xóa -->
+<div class="modal fade" id="deleteConfirmModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title">
+                    <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                    Xác nhận xóa
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Bạn có chắc chắn muốn xóa profile "<span id="profileNameToDelete"></span>"?</p>
+                <p class="text-danger">
+                    <i class="bi bi-exclamation-circle me-2"></i>
+                    Hành động này không thể hoàn tác!
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Hủy</button>
+                <form id="deleteForm" method="post">
+                    <input type="hidden" id="profileIdToDelete" name="id" />
+                    <button type="submit" class="btn btn-danger">Xóa</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Xử lý sự kiện xóa
+            const deleteButtons = document.querySelectorAll('.delete-btn');
+            deleteButtons.forEach(button => {
+                button.addEventListener('click', function() {
+                    const profileId = this.getAttribute('data-id');
+                    const profileName = this.getAttribute('data-name');
+                    
+                    document.getElementById('profileIdToDelete').value = profileId;
+                    document.getElementById('profileNameToDelete').innerText = profileName;
+                    document.getElementById('deleteForm').action = `/Profiles/Delete?id=${profileId}`;
+                    
+                    const deleteModal = new bootstrap.Modal(document.getElementById('deleteConfirmModal'));
+                    deleteModal.show();
+                });
+            });
+        });
+    </script>
+}

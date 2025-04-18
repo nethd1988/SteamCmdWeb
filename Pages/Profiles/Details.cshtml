@@ -1,0 +1,174 @@
+@page "{id:int}"
+@model SteamCmdWeb.Pages.Profiles.DetailsModel
+@{
+    ViewData["Title"] = "Chi tiết Profile";
+}
+
+<div class="container">
+    <div class="mb-4">
+        <h1>Chi tiết Profile</h1>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="/">Trang chủ</a></li>
+                <li class="breadcrumb-item"><a href="/Profiles">Profiles</a></li>
+                <li class="breadcrumb-item active">Chi tiết</li>
+            </ol>
+        </nav>
+    </div>
+
+    @if (Model.Profile == null)
+    {
+        <div class="alert alert-danger">
+            Profile không tồn tại hoặc đã bị xóa.
+        </div>
+    }
+    else
+    {
+        <div class="card mb-4">
+            <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="bi bi-info-circle me-2"></i>
+                    @Model.Profile.Name
+                </h5>
+                <div>
+                    <a href="/Profiles/Edit/@Model.Profile.Id" class="btn btn-sm btn-light">
+                        <i class="bi bi-pencil me-1"></i> Chỉnh sửa
+                    </a>
+                    <a href="/Api/Profiles/@Model.Profile.Id" target="_blank" class="btn btn-sm btn-info">
+                        <i class="bi bi-code-slash me-1"></i> API
+                    </a>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6 class="border-bottom pb-2 mb-3">Thông tin cơ bản</h6>
+                        <table class="table table-sm">
+                            <tr>
+                                <th style="width: 150px;">ID:</th>
+                                <td>@Model.Profile.Id</td>
+                            </tr>
+                            <tr>
+                                <th>App ID:</th>
+                                <td>@Model.Profile.AppID</td>
+                            </tr>
+                            <tr>
+<th>Thư mục cài đặt:</th>
+                                <td>@Model.Profile.InstallDirectory</td>
+                            </tr>
+                            <tr>
+                                <th>Tham số bổ sung:</th>
+                                <td>@(string.IsNullOrEmpty(Model.Profile.Arguments) ? "Không có" : Model.Profile.Arguments)</td>
+                            </tr>
+                            <tr>
+                                <th>Kiểm tra file:</th>
+                                <td>@(Model.Profile.ValidateFiles ? "Có" : "Không")</td>
+                            </tr>
+                            <tr>
+                                <th>Tự động chạy:</th>
+                                <td>@(Model.Profile.AutoRun ? "Có" : "Không")</td>
+                            </tr>
+                        </table>
+                    </div>
+                    <div class="col-md-6">
+                        <h6 class="border-bottom pb-2 mb-3">Thông tin đăng nhập & trạng thái</h6>
+                        <table class="table table-sm">
+                            <tr>
+                                <th style="width: 150px;">Đăng nhập:</th>
+                                <td>
+                                    @if (Model.Profile.AnonymousLogin)
+                                    {
+                                        <span class="badge bg-secondary">Ẩn danh</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-info">Tài khoản</span>
+                                    }
+                                </td>
+                            </tr>
+                            <tr>
+                                <th>Trạng thái:</th>
+                                <td>
+                                    @if (Model.Profile.Status == "Running")
+                                    {
+                                        <span class="badge bg-success">Đang chạy</span>
+                                    }
+                                    else if (Model.Profile.Status == "Stopped")
+                                    {
+                                        <span class="badge bg-secondary">Đã dừng</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-primary">Sẵn sàng</span>
+                                    }
+                                </td>
+                            </tr>
+                            <tr>
+                                <th>Chạy lần cuối:</th>
+                                <td>@Model.Profile.LastRun.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss")</td>
+                            </tr>
+                            <tr>
+                                <th>Bắt đầu lần cuối:</th>
+                                <td>@Model.Profile.StartTime.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss")</td>
+                            </tr>
+                            <tr>
+                                <th>Dừng lần cuối:</th>
+                                <td>@Model.Profile.StopTime.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss")</td>
+                            </tr>
+                            <tr>
+                                <th>Process ID:</th>
+                                <td>@(Model.Profile.Pid > 0 ? Model.Profile.Pid.ToString() : "Không có")</td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer">
+                <div class="d-flex justify-content-between">
+                    <a href="/Profiles" class="btn btn-secondary">
+                        <i class="bi bi-arrow-left me-1"></i> Quay lại
+                    </a>
+                    <div>
+                        <a asp-page="Edit" asp-route-id="@Model.Profile.Id" class="btn btn-primary">
+                            <i class="bi bi-pencil me-1"></i> Chỉnh sửa
+                        </a>
+                        <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#deleteConfirmModal">
+                            <i class="bi bi-trash me-1"></i> Xóa
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+<!-- Modal Xác nhận xóa -->
+@if (Model.Profile != null)
+{
+    <div class="modal fade" id="deleteConfirmModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-danger text-white">
+                    <h5 class="modal-title">
+                        <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                        Xác nhận xóa
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Bạn có chắc chắn muốn xóa profile "@Model.Profile.Name"?</p>
+                    <p class="text-danger">
+                        <i class="bi bi-exclamation-circle me-2"></i>
+                        Hành động này không thể hoàn tác!
+                    </p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Hủy</button>
+                    <form method="post" asp-page="Delete" asp-route-id="@Model.Profile.Id">
+                        <button type="submit" class="btn btn-danger">Xóa</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+}

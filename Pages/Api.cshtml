@@ -1,0 +1,134 @@
+@page
+@model SteamCmdWeb.Pages.ApiModel
+@{
+    ViewData["Title"] = "API Documentation";
+}
+
+<div class="container">
+    <h1>API Documentation</h1>
+    
+    <div class="card mb-4">
+        <div class="card-header bg-dark text-white">
+            <h3 class="mb-0">Endpoints</h3>
+        </div>
+        <div class="card-body">
+            <h4>Profiles</h4>
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Method</th>
+                        <th>Endpoint</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><span class="badge bg-success">GET</span></td>
+                        <td><code>/api/profiles</code></td>
+                        <td>Get all profiles</td>
+                    </tr>
+                    <tr>
+                        <td><span class="badge bg-success">GET</span></td>
+                        <td><code>/api/profiles/{id}</code></td>
+                        <td>Get a profile by ID</td>
+                    </tr>
+                    <tr>
+                        <td><span class="badge bg-primary">POST</span></td>
+                        <td><code>/api/profiles</code></td>
+                        <td>Create a new profile</td>
+                    </tr>
+                    <tr>
+                        <td><span class="badge bg-warning text-dark">PUT</span></td>
+                        <td><code>/api/profiles/{id}</code></td>
+                        <td>Update a profile</td>
+                    </tr>
+                    <tr>
+                        <td><span class="badge bg-danger">DELETE</span></td>
+                        <td><code>/api/profiles/{id}</code></td>
+                        <td>Delete a profile</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h4>Health Check</h4>
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Method</th>
+                        <th>Endpoint</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><span class="badge bg-success">GET</span></td>
+                        <td><code>/health</code></td>
+                        <td>Check server health</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header bg-primary text-white">
+            <h3 class="mb-0">Profile Model</h3>
+        </div>
+        <div class="card-body">
+            <pre><code>{
+  "id": 1,
+  "name": "CS:GO Server",
+  "appID": "730",
+  "installDirectory": "D:\\SteamServers\\CSGO",
+  "steamUsername": "", // Encrypted or empty
+  "steamPassword": "", // Encrypted or empty
+  "arguments": "+app_update 730 validate",
+  "validateFiles": true,
+  "autoRun": false,
+  "anonymousLogin": true,
+  "status": "Stopped",
+  "startTime": "2023-01-01T00:00:00",
+  "stopTime": "2023-01-01T00:00:00",
+  "pid": 0,
+  "lastRun": "2023-01-01T00:00:00"
+}</code></pre>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header bg-info text-white">
+            <h3 class="mb-0">Examples</h3>
+        </div>
+        <div class="card-body">
+            <h5>Create a new profile</h5>
+            <pre><code>POST /api/profiles
+Content-Type: application/json
+
+{
+  "name": "CS:GO Server",
+  "appID": "730",
+  "installDirectory": "D:\\SteamServers\\CSGO",
+  "arguments": "+app_update 730 validate",
+  "validateFiles": true,
+  "autoRun": false,
+  "anonymousLogin": true
+}</code></pre>
+
+            <h5>Update a profile</h5>
+            <pre><code>PUT /api/profiles/1
+Content-Type: application/json
+
+{
+  "id": 1,
+  "name": "CS:GO Server Updated",
+  "appID": "730",
+  "installDirectory": "D:\\SteamServers\\CSGO",
+  "arguments": "+app_update 730 validate",
+  "validateFiles": true,
+  "autoRun": true,
+  "anonymousLogin": true,
+  "status": "Ready"
+}</code></pre>
+        </div>
+    </div>
+</div>

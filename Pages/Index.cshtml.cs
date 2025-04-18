@@ -1,45 +1,34 @@
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using SteamCmdWeb.Models;
 using SteamCmdWeb.Services;
 using System;
+using System.Collections.Generic;
 using System.Linq;
-using System.Net.NetworkInformation;
+using System.Threading.Tasks;
 
 namespace SteamCmdWeb.Pages
 {
     public class IndexModel : PageModel
     {
-        private readonly AppProfileManager _profileManager;
+        private readonly ProfileService _profileService;
         private static readonly DateTime _serverStartTime = DateTime.Now;
 
-        public bool IsServerRunning { get; private set; }
         public string Uptime { get; private set; }
-        public string StartTime { get; private set; }
+        public List<ClientProfile> Profiles { get; private set; } = new List<ClientProfile>();
 
-        public IndexModel(AppProfileManager profileManager)
+        public IndexModel(ProfileService profileService)
         {
-            _profileManager = profileManager ?? throw new ArgumentNullException(nameof(profileManager));
+            _profileService = profileService;
         }
 
-        public void OnGet()
+        public async Task OnGetAsync()
         {
-            IsServerRunning = IsPortListening(61188);
+            // Lấy danh sách profiles
+            Profiles = await _profileService.GetAllProfilesAsync();
+
+            // Tính thời gian uptime
             TimeSpan uptime = DateTime.Now - _serverStartTime;
             Uptime = FormatUptime(uptime);
-            StartTime = _serverStartTime.ToString("dd/MM/yyyy HH:mm:ss");
-        }
-
-        private bool IsPortListening(int port)
-        {
-            try
-            {
-                IPGlobalProperties ipProperties = IPGlobalProperties.GetIPGlobalProperties();
-                var tcpListeners = ipProperties.GetActiveTcpListeners();
-                return tcpListeners.Any(endpoint => endpoint.Port == port);
-            }
-            catch (Exception)
-            {
-                return false;
-            }
         }
 
         private string FormatUptime(TimeSpan timeSpan)
@@ -54,12 +43,7 @@ namespace SteamCmdWeb.Pages
                 return $"{(int)timeSpan.TotalHours} giờ, {timeSpan.Minutes} phút";
             }
 
-            if (timeSpan.TotalMinutes >= 1)
-            {
-                return $"{(int)timeSpan.TotalMinutes} phút, {timeSpan.Seconds} giây";
-            }
-
-            return $"{timeSpan.Seconds} giây";
+            return $"{timeSpan.Minutes} phút, {timeSpan.Seconds} giây";
         }
     }
 }

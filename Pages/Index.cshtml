@@ -1,118 +1,136 @@
 ﻿@page
 @model SteamCmdWeb.Pages.IndexModel
 @{
-    ViewData["Title"] = "Trang chủ";
+    ViewData["Title"] = "SteamCMD Web Server";
 }
 
-<div class="row">
-    <div class="col-md-8">
-        <div class="card mb-4">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <h5 class="mb-0">
-                    <i class="bi bi-info-circle me-2"></i>
-                    Thông tin hệ thống
-                </h5>
+<div class="container">
+    <div class="row">
+        <div class="col-md-8">
+            <div class="card mb-4">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">
+                        <i class="bi bi-info-circle me-2"></i>
+                        Thông tin Server
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <strong>Trạng thái Server:</strong>
+                                <span class="badge bg-success">Đang hoạt động</span>
+                            </div>
+                            <div class="mb-3">
+                                <strong>Thời gian hoạt động:</strong>
+                                <span>@Model.Uptime</span>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <strong>Tổng số Profiles:</strong>
+                                <span id="profileCount">@Model.Profiles.Count</span>
+                            </div>
+                            <div class="mb-3">
+                                <strong>Địa chỉ TCP:</strong>
+                                <span>localhost:61188</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
-            <div class="card-body">
-                <div class="server-status @(Model.IsServerRunning ? "online" : "offline")">
-                    <span class="status-indicator @(Model.IsServerRunning ? "online" : "offline")"></span>
-                    <strong>Trạng thái Server:</strong> @(Model.IsServerRunning ? "Đang hoạt động" : "Đã dừng")
-                    @if (Model.IsServerRunning)
-                    {
-                        <span class="ms-3">
-                            <strong>Cổng:</strong> 61188
-                        </span>
-                    }
-                </div>
+        </div>
 
-                <div class="row">
-                    <div class="col-md-6">
-                        <div class="mb-3">
-                            <strong>Tổng số Profiles:</strong> <span id="profileCount">0</span>
-                        </div>
-                        <div class="mb-3">
-                            <strong>Thời gian hoạt động:</strong> @Model.Uptime
-                        </div>
-                    </div>
-                    <div class="col-md-6">
-                        <div class="mb-3">
-                            <strong>Phiên bản:</strong> 1.0.0
-                        </div>
-                        <div class="mb-3">
-                            <strong>Thời gian khởi động:</strong> @Model.StartTime
-                        </div>
-                    </div>
+        <div class="col-md-4">
+            <div class="card mb-4">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0">
+                        <i class="bi bi-tools me-2"></i>
+                        Thao tác nhanh
+                    </h5>
                 </div>
-
-                <div class="d-grid gap-2 d-md-flex justify-content-md-end">
-                    <a href="/AppProfiles" class="btn btn-primary">
-                        <i class="bi bi-controller me-1"></i> Quản lý Game Profiles
-                    </a>
+                <div class="card-body">
+                    <div class="d-grid gap-2">
+                        <a href="/Profiles" class="btn btn-primary">
+                            <i class="bi bi-list me-2"></i>
+                            Quản lý Profiles
+                        </a>
+                        <a href="/Api" class="btn btn-success">
+                            <i class="bi bi-code-slash me-2"></i>
+                            Tài liệu API
+                        </a>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <div class="col-md-4">
-        <div class="card mb-4">
-            <div class="card-header">
-                <h5 class="mb-0">
-                    <i class="bi bi-controller me-2"></i>
-                    Game Profiles
-                </h5>
-            </div>
-            <div class="card-body">
-                <div id="recentProfiles">
-                    <div class="text-center">
-                        <div class="spinner-border text-primary" role="status">
-                            <span class="visually-hidden">Đang tải...</span>
-                        </div>
-                        <p class="mt-2">Đang tải danh sách profiles...</p>
-                    </div>
-                </div>
-
-                <div class="d-grid gap-2 mt-3">
-                    <a href="/AppProfiles" class="btn btn-outline-primary">
-                        <i class="bi bi-grid-3x3-gap me-1"></i> Xem tất cả profiles
-                    </a>
-                    <a href="/AppProfiles?add=true" class="btn btn-primary">
-                        <i class="bi bi-plus-circle me-1"></i> Thêm game mới
-                    </a>
-                </div>
-            </div>
+    <div class="card">
+        <div class="card-header bg-dark text-white">
+            <h5 class="mb-0">
+                <i class="bi bi-list-check me-2"></i>
+                Danh sách Profiles
+            </h5>
         </div>
-
-        <div class="card">
-            <div class="card-header">
-                <h5 class="mb-0">
-                    <i class="bi bi-gear me-2"></i>
-                    Thao tác nhanh
-                </h5>
-            </div>
-            <div class="card-body">
-                <div class="list-group">
-                    <a href="/ClientBackup" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center bg-dark text-white border-secondary">
-                        <div>
-                            <i class="bi bi-cloud-download me-2"></i>
-                            Backup & Import Profiles
-                        </div>
-                        <i class="bi bi-chevron-right"></i>
-                    </a>
-                    <a href="/Profiles" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center bg-dark text-white border-secondary">
-                        <div>
-                            <i class="bi bi-list-check me-2"></i>
-                            Danh sách Profile
-                        </div>
-                        <i class="bi bi-chevron-right"></i>
-                    </a>
-                    <button id="backupAllBtn" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center bg-dark text-white border-secondary">
-                        <div>
-                            <i class="bi bi-save me-2"></i>
-                            Backup tất cả Profile
-                        </div>
-                        <i class="bi bi-chevron-right"></i>
-                    </button>
-                </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-striped table-hover mb-0">
+                    <thead class="table-dark">
+                        <tr>
+                            <th scope="col">ID</th>
+                            <th scope="col">Tên</th>
+                            <th scope="col">App ID</th>
+                            <th scope="col">Thư mục cài đặt</th>
+                            <th scope="col">Trạng thái</th>
+                            <th scope="col" class="text-center">Thao tác</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (Model.Profiles.Count == 0)
+                        {
+                            <tr>
+                                <td colspan="6" class="text-center py-3">
+                                    <i class="bi bi-info-circle me-2"></i>
+                                    Không có profile nào trong hệ thống
+                                </td>
+                            </tr>
+                        }
+                        else
+                        {
+                            @foreach (var profile in Model.Profiles)
+                            {
+                                <tr>
+                                    <td>@profile.Id</td>
+                                    <td>@profile.Name</td>
+                                    <td>@profile.AppID</td>
+                                    <td class="text-truncate" style="max-width: 200px;">@profile.InstallDirectory</td>
+                                    <td>
+                                        @if (profile.Status == "Running")
+                                        {
+                                            <span class="badge bg-success">Đang chạy</span>
+                                        }
+                                        else if (profile.Status == "Stopped")
+                                        {
+                                            <span class="badge bg-secondary">Đã dừng</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-primary">Sẵn sàng</span>
+                                        }
+                                    </td>
+                                    <td class="text-center">
+                                        <a href="/Profiles/@profile.Id" class="btn btn-sm btn-info">
+                                            <i class="bi bi-eye"></i>
+                                        </a>
+                                        <a href="/Profiles/Edit/@profile.Id" class="btn btn-sm btn-primary">
+                                            <i class="bi bi-pencil"></i>
+                                        </a>
+                                    </td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
             </div>
         </div>
     </div>
@@ -120,153 +138,8 @@
 
 @section Scripts {
     <script>
-        function loadProfileCount() {
-            document.getElementById('recentProfiles').innerHTML = `
-                <div class="text-center">
-                    <div class="spinner-border text-primary" role="status">
-                        <span class="visually-hidden">Đang tải...</span>
-                    </div>
-                    <p class="mt-2">Đang tải danh sách profiles...</p>
-                </div>
-            `;
-
-            fetch('/api/profiles')
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error(`HTTP error! Status: ${response.status}`);
-                    }
-                    return response.json();
-                })
-                .then(data => {
-                    document.getElementById('profileCount').textContent = data.length;
-                    displayRecentProfiles(data);
-                })
-                .catch(error => {
-                    console.error('Lỗi:', error);
-                    document.getElementById('profileCount').textContent = 'Không xác định';
-                    displayErrorProfiles();
-                });
-        }
-
-        function displayErrorProfiles() {
-            const container = document.getElementById('recentProfiles');
-            container.innerHTML = `
-                <div class="alert alert-danger text-center">
-                    <i class="bi bi-exclamation-triangle-fill me-2"></i>
-                    Không thể tải danh sách profiles
-                </div>
-            `;
-        }
-
-        function displayRecentProfiles(profiles) {
-            const container = document.getElementById('recentProfiles');
-
-            if (!profiles || profiles.length === 0) {
-                container.innerHTML = `
-                    <div class="alert alert-info text-center">
-                        <i class="bi bi-info-circle me-2"></i>
-                        Chưa có profile nào
-                    </div>
-                `;
-                return;
-            }
-
-            const recentProfiles = profiles
-                .sort((a, b) => new Date(b.lastRun || 0) - new Date(a.lastRun || 0))
-                .slice(0, 5);
-
-            let html = '<div class="list-group">';
-
-            recentProfiles.forEach(profile => {
-                let statusBadge = '';
-                switch (profile.status) {
-                    case 'Running':
-                        statusBadge = '<span class="badge bg-success ms-2">Đang chạy</span>';
-                        break;
-                    case 'Ready':
-                        statusBadge = '<span class="badge bg-primary ms-2">Sẵn sàng</span>';
-                        break;
-                    case 'Stopped':
-                        statusBadge = '<span class="badge bg-secondary ms-2">Đã dừng</span>';
-                        break;
-                    default:
-                        statusBadge = `<span class="badge bg-info ms-2">${profile.status || 'Không xác định'}</span>`;
-                }
-
-                html += `
-                    <a href="/AppProfiles?edit=${profile.id}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center bg-dark text-white border-secondary">
-                        <div>
-                            <strong>${profile.name || 'Không có tên'}</strong>
-                            ${statusBadge}
-                            <div class="small text-muted">App ID: ${profile.appID || 'N/A'}</div>
-                        </div>
-                        <i class="bi bi-chevron-right"></i>
-                    </a>
-                `;
-            });
-
-            html += '</div>';
-            container.innerHTML = html;
-        }
-
-        function backupAllProfiles() {
-            const btn = document.getElementById('backupAllBtn');
-            const originalHtml = btn.innerHTML;
-            btn.innerHTML = `
-                <div>
-                    <span class="spinner-border spinner-border-sm" role="status"></span>
-                    <span>Đang backup...</span>
-                </div>
-            `;
-            btn.disabled = true;
-
-            fetch('/api/profiles/backup')
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        showToast('success', data.message);
-                    } else {
-                        showToast('error', data.message || 'Lỗi khi backup profiles');
-                    }
-                })
-                .catch(error => {
-                    console.error('Lỗi:', error);
-                    showToast('error', 'Không thể backup profiles');
-                })
-                .finally(() => {
-                    btn.innerHTML = originalHtml;
-                    btn.disabled = false;
-                });
-        }
-
-        function showToast(type, message) {
-            const toastContainer = document.createElement('div');
-            toastContainer.classList.add('position-fixed', 'bottom-0', 'end-0', 'p-3');
-            toastContainer.style.zIndex = 1070;
-
-            const toastClass = type === 'success' ? 'bg-success' : 'bg-danger';
-            const iconClass = type === 'success' ? 'bi-check-circle-fill' : 'bi-exclamation-triangle-fill';
-
-            toastContainer.innerHTML = `
-                <div class="toast align-items-center text-white ${toastClass}" role="alert">
-                    <div class="d-flex">
-                        <div class="toast-body">
-                            <i class="bi ${iconClass} me-2"></i>
-                            ${message}
-                        </div>
-                        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
-                    </div>
-                </div>
-            `;
-
-            document.body.appendChild(toastContainer);
-            const toast = new bootstrap.Toast(toastContainer.querySelector('.toast'));
-            toast.show();
-        }
-
         document.addEventListener('DOMContentLoaded', function() {
-            loadProfileCount();
-            document.getElementById('backupAllBtn').addEventListener('click', backupAllProfiles);
+            console.log('SteamCmdWeb Server Dashboard loaded');
         });
     </script>
 }

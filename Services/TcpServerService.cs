@@ -1,5 +1,6 @@
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Net;
@@ -8,1145 +9,366 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 using SteamCmdWeb.Models;
+using SteamCmdWeb.Services;
 
 namespace SteamCmdWeb.Services
 {
     public class TcpServerService : BackgroundService
     {
         private readonly ILogger<TcpServerService> _logger;
-        private readonly AppProfileManager _profileManager;
+        private readonly ProfileService _profileService;
+        private readonly int _port = 61188;
         private TcpListener _listener;
-        private readonly string _configFolder = Path.Combine(Directory.GetCurrentDirectory(), "Profiles");
-        private readonly string _dataFolder = Path.Combine(Directory.GetCurrentDirectory(), "Data");
-        private readonly string _authToken = "simple_auth_token"; // Thay đổi nếu cần bảo mật hơn
+        private readonly SemaphoreSlim _connectionSemaphore = new SemaphoreSlim(10, 10); // Giới hạn 10 kết nối đồng thời
 
-        // Theo dõi các client được kết nối để tái sử dụng
-        private readonly ConcurrentDictionary<string, ClientConnection> _activeConnections =
-            new ConcurrentDictionary<string, ClientConnection>();
-
-        // Semaphore để giới hạn số kết nối đồng thời
-        private readonly SemaphoreSlim _connectionSemaphore = new SemaphoreSlim(20, 20); // Tối đa 20 kết nối đồng thời
-
-        // Buffer pool để giảm áp lực GC
-        private readonly ConcurrentQueue<byte[]> _bufferPool = new ConcurrentQueue<byte[]>();
-        private const int BufferSize = 8192; // 8KB buffer
-        private const int MaxPoolSize = 100; // Tối đa 100 buffer trong pool
-
-        // Cache đơn giản
-        private readonly ConcurrentDictionary<string, CachedItem<List<string>>> _profileNamesCache =
-            new ConcurrentDictionary<string, CachedItem<List<string>>>();
-
-        // Thống kê
-        private long _totalConnections = 0;
-        private long _totalProfilesReceived = 0;
-        private long _totalFailedRequests = 0;
-        private readonly ConcurrentBag<LogEntry> _serverLogs = new ConcurrentBag<LogEntry>();
-        private const int MaxLogEntries = 1000; // Giới hạn số lượng log entries để tránh quá tải bộ nhớ
-
-        public TcpServerService(ILogger<TcpServerService> logger, AppProfileManager profileManager)
+        public TcpServerService(
+            ILogger<TcpServerService> logger,
+            ProfileService profileService)
         {
-            _logger = logger;
-            _profileManager = profileManager;
-
-            if (!Directory.Exists(_configFolder))
-            {
-                Directory.CreateDirectory(_configFolder);
-                _logger.LogInformation("Created Profiles directory at {Path}", _configFolder);
-            }
-
-            if (!Directory.Exists(_dataFolder))
-            {
-                Directory.CreateDirectory(_dataFolder);
-                _logger.LogInformation("Created Data directory at {Path}", _dataFolder);
-            }
-
-            // Khởi tạo buffer pool
-            for (int i = 0; i < 10; i++) // Khởi tạo 10 buffer ban đầu
-            {
-                _bufferPool.Enqueue(new byte[BufferSize]);
-            }
-
-            // Thêm log khởi động
-            AddLog(new LogEntry
-            {
-                Timestamp = DateTime.Now,
-                Message = "TCP Server service initialized",
-                Level = LogLevel.Information,
-                Source = "System"
-            });
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _profileService = profileService ?? throw new ArgumentNullException(nameof(profileService));
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             try
             {
-                _listener = new TcpListener(IPAddress.Any, 61188);
+                _listener = new TcpListener(IPAddress.Any, _port);
                 _listener.Start();
 
-                _logger.LogInformation("TCP Server started on port 61188");
-                AddLog(new LogEntry
-                {
-                    Timestamp = DateTime.Now,
-                    Message = "TCP Server started on port 61188",
-                    Level = LogLevel.Information,
-                    Source = "System"
-                });
-
-                // Bắt đầu task dọn dẹp các kết nối đã hết hạn
-                _ = CleanupExpiredConnectionsAsync(stoppingToken);
+                _logger.LogInformation("TCP Server đã khởi động trên cổng {0}", _port);
 
                 while (!stoppingToken.IsCancellationRequested)
                 {
-                    TcpClient client = await _listener.AcceptTcpClientAsync();
-                    Interlocked.Increment(ref _totalConnections);
-
-                    // Cấu hình client options để tối ưu hiệu suất
-                    client.NoDelay = true; // Tắt thuật toán Nagle
-                    client.ReceiveBufferSize = BufferSize;
-                    client.SendBufferSize = BufferSize;
-                    client.ReceiveTimeout = 30000; // 30 giây timeout
-                    client.SendTimeout = 30000;
-
-                    string clientIp = ((IPEndPoint)client.Client.RemoteEndPoint).Address.ToString();
-                    string clientId = $"{clientIp}:{Guid.NewGuid()}";
-
-                    var clientConnection = new ClientConnection
-                    {
-                        Client = client,
-                        LastActivity = DateTime.UtcNow,
-                        IpAddress = clientIp,
-                        Id = clientId
-                    };
-
-                    _activeConnections[clientId] = clientConnection;
-
-                    AddLog(new LogEntry
-                    {
-                        Timestamp = DateTime.Now,
-                        Message = $"Client connected from {clientIp}",
-                        Level = LogLevel.Information,
-                        Source = "Connection"
-                    });
-
-                    _ = ProcessClientAsync(clientConnection, stoppingToken);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error in TCP Server");
-                AddLog(new LogEntry
-                {
-                    Timestamp = DateTime.Now,
-                    Message = $"TCP Server error: {ex.Message}",
-                    Level = LogLevel.Error,
-                    Source = "System"
-                });
-            }
-        }
-
-        private async Task ProcessClientAsync(ClientConnection connection, CancellationToken stoppingToken)
-        {
-            // Đợi token semaphore
-            await _connectionSemaphore.WaitAsync(stoppingToken);
-
-            try
-            {
-                await HandleClientAsync(connection, stoppingToken);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error processing client {ClientId}: {Message}", connection.Id, ex.Message);
-                AddLog(new LogEntry
-                {
-                    Timestamp = DateTime.Now,
-                    Message = $"Error processing client {connection.IpAddress}: {ex.Message}",
-                    Level = LogLevel.Error,
-                    Source = "ClientHandler"
-                });
-                Interlocked.Increment(ref _totalFailedRequests);
-            }
-            finally
-            {
-                // Xóa client khỏi danh sách kết nối hoạt động
-                _activeConnections.TryRemove(connection.Id, out _);
-
-                // Giải phóng token semaphore
-                _connectionSemaphore.Release();
-
-                try
-                {
-                    connection.Client?.Close();
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Error closing TCP client {ClientId}", connection.Id);
-                }
-            }
-        }
-
-        private async Task HandleClientAsync(ClientConnection connection, CancellationToken stoppingToken)
-        {
-            NetworkStream stream = null;
-            byte[] buffer = GetBufferFromPool();
-            byte[] requestBuffer = null; // Khai báo ở phạm vi phù hợp
-
-            try
-            {
-                stream = connection.Client.GetStream();
-
-                // Đọc tiền tố độ dài (4 byte)
-                int bytesRead = await ReadBytesAsync(stream, buffer, 0, 4, stoppingToken);
-                if (bytesRead < 4)
-                {
-                    _logger.LogWarning("Failed to read request length from client {ClientId}. Bytes read: {BytesRead}",
-                        connection.Id, bytesRead);
-                    return;
-                }
-
-                int requestLength = BitConverter.ToInt32(buffer, 0);
-                if (requestLength <= 0 || requestLength > 10 * 1024 * 1024) // Giới hạn kích thước để tránh tấn công (10MB)
-                {
-                    _logger.LogWarning("Invalid request length: {Length} from client {ClientId}",
-                        requestLength, connection.Id);
-                    return;
-                }
-
-                // Sửa CS0103: Khởi tạo requestBuffer trước khi sử dụng
-                requestBuffer = requestLength > buffer.Length ? new byte[requestLength] : buffer;
-                if (requestLength > buffer.Length)
-                {
-                    ReturnBufferToPool(buffer);
-                }
-
-                bytesRead = await ReadBytesAsync(stream, requestBuffer, 0, requestLength, stoppingToken);
-                if (bytesRead < requestLength)
-                {
-                    _logger.LogWarning("Connection closed by client {ClientId} before reading full request",
-                        connection.Id);
-                    return;
-                }
-
-                // Chuyển dữ liệu thành chuỗi
-                string request = Encoding.UTF8.GetString(requestBuffer, 0, bytesRead).Trim();
-
-                // Ghi lại yêu cầu nhưng ẩn thông tin nhạy cảm (mật khẩu)
-                string logRequest = request;
-                if (request.Contains("PASSWORD") || request.Contains("password"))
-                {
-                    logRequest = "***PASSWORD DATA HIDDEN***";
-                }
-
-                _logger.LogInformation("Received request from client {ClientId}: {Request}",
-                    connection.Id, logRequest);
-
-                AddLog(new LogEntry
-                {
-                    Timestamp = DateTime.Now,
-                    Message = $"Request from {connection.IpAddress}: {(logRequest.Length > 100 ? logRequest.Substring(0, 100) + "..." : logRequest)}",
-                    Level = LogLevel.Information,
-                    Source = "Request"
-                });
-
-                // Cập nhật thời gian hoạt động cuối
-                connection.LastActivity = DateTime.UtcNow;
-
-                // Kiểm tra xác thực
-                if (request.StartsWith($"AUTH:{_authToken}"))
-                {
-                    request = request.Substring($"AUTH:{_authToken}".Length).Trim();
-                    await ProcessAuthenticatedRequestAsync(connection, request, stream, stoppingToken);
-                }
-                else
-                {
-                    await SendResponseAsync(stream, "AUTH_FAILED", stoppingToken);
-                    _logger.LogWarning("Client {ClientId} authentication failed", connection.Id);
-
-                    AddLog(new LogEntry
-                    {
-                        Timestamp = DateTime.Now,
-                        Message = $"Authentication failed for client {connection.IpAddress}",
-                        Level = LogLevel.Warning,
-                        Source = "Auth"
-                    });
-
-                    Interlocked.Increment(ref _totalFailedRequests);
-                }
-            }
-            finally
-            {
-                if (requestBuffer != null && requestBuffer != buffer)
-                {
-                    // Không trả requestBuffer vào pool vì kích thước có thể khác
-                    requestBuffer = null;
-                }
-                if (buffer != null && buffer != requestBuffer)
-                {
-                    ReturnBufferToPool(buffer);
-                }
-            }
-        }
-
-        private async Task HandleSendProfileAsync(ClientConnection connection, NetworkStream stream, CancellationToken stoppingToken)
-        {
-            await SendResponseAsync(stream, "READY_TO_RECEIVE", stoppingToken);
-            _logger.LogInformation("Sent READY_TO_RECEIVE to client {ClientId}", connection.Id);
-
-            AddLog(new LogEntry
-            {
-                Timestamp = DateTime.Now,
-                Message = $"Ready to receive profile from {connection.IpAddress}",
-                Level = LogLevel.Information,
-                Source = "ProfileReceive"
-            });
-
-            byte[] buffer = GetBufferFromPool();
-            byte[] profileBuffer = null; // Khai báo ở phạm vi phù hợp
-
-            try
-            {
-                // Đọc độ dài của profile
-                int bytesRead = await ReadBytesAsync(stream, buffer, 0, 4, stoppingToken);
-                if (bytesRead < 4)
-                {
-                    _logger.LogWarning("Failed to read profile length from client {ClientId}", connection.Id);
-                    return;
-                }
-
-                int profileLength = BitConverter.ToInt32(buffer, 0);
-                if (profileLength <= 0 || profileLength > 5 * 1024 * 1024) // Giới hạn 5MB
-                {
-                    _logger.LogWarning("Invalid profile length from client {ClientId}: {Length}",
-                        connection.Id, profileLength);
-                    return;
-                }
-
-                // Sửa CS0103: Khởi tạo profileBuffer trước khi sử dụng
-                profileBuffer = profileLength > buffer.Length ? new byte[profileLength] : buffer;
-                if (profileLength > buffer.Length)
-                {
-                    ReturnBufferToPool(buffer);
-                }
-
-                bytesRead = await ReadBytesAsync(stream, profileBuffer, 0, profileLength, stoppingToken);
-                if (bytesRead < profileLength)
-                {
-                    _logger.LogWarning("Connection closed by client {ClientId} before reading full profile",
-                        connection.Id);
-                    return;
-                }
-
-                string jsonProfile = Encoding.UTF8.GetString(profileBuffer, 0, bytesRead);
-                try
-                {
-                    var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-                    ClientProfile profile = JsonSerializer.Deserialize<ClientProfile>(jsonProfile, options);
-
-                    if (profile != null)
-                    {
-                        Interlocked.Increment(ref _totalProfilesReceived);
-
-                        // Backup profile if needed
-                        string backupFolder = Path.Combine(_dataFolder, "Backup");
-                        if (!Directory.Exists(backupFolder))
-                        {
-                            Directory.CreateDirectory(backupFolder);
-                        }
-
-                        string filePath = Path.Combine(backupFolder, $"profile_{profile.Id}_{DateTime.Now:yyyyMMdd_HHmmss}.json");
-                        await File.WriteAllTextAsync(filePath, jsonProfile, stoppingToken);
-
-                        // Thêm hoặc cập nhật profile
-                        var existingProfile = _profileManager.GetProfileById(profile.Id);
-                        if (existingProfile == null)
-                        {
-                            _profileManager.AddProfile(profile);
-
-                            _logger.LogInformation("Added new profile: {Name} (ID: {Id}) from client {ClientId}",
-                                profile.Name, profile.Id, connection.Id);
-
-                            AddLog(new LogEntry
-                            {
-                                Timestamp = DateTime.Now,
-                                Message = $"Added new profile: {profile.Name} (ID: {profile.Id}) from {connection.IpAddress}",
-                                Level = LogLevel.Information,
-                                Source = "ProfileAdd"
-                            });
-                        }
-                        else
-                        {
-                            _profileManager.UpdateProfile(profile);
-
-                            _logger.LogInformation("Updated profile: {Name} (ID: {Id}) from client {ClientId}",
-                                profile.Name, profile.Id, connection.Id);
-
-                            AddLog(new LogEntry
-                            {
-                                Timestamp = DateTime.Now,
-                                Message = $"Updated profile: {profile.Name} (ID: {profile.Id}) from {connection.IpAddress}",
-                                Level = LogLevel.Information,
-                                Source = "ProfileUpdate"
-                            });
-                        }
-
-                        // Xóa cache để đảm bảo dữ liệu mới nhất
-                        InvalidateProfileCache();
-
-                        // Trả kết quả thành công
-                        await SendResponseAsync(stream, $"SUCCESS:{profile.Id}", stoppingToken);
-                    }
-                    else
-                    {
-                        _logger.LogWarning("Received null profile from client {ClientId}", connection.Id);
-                        await SendResponseAsync(stream, "ERROR:NULL_PROFILE", stoppingToken);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Error processing profile JSON from client {ClientId}", connection.Id);
-                    await SendResponseAsync(stream, $"ERROR:{ex.Message}", stoppingToken);
-
-                    AddLog(new LogEntry
-                    {
-                        Timestamp = DateTime.Now,
-                        Message = $"Error processing profile from {connection.IpAddress}: {ex.Message}",
-                        Level = LogLevel.Error,
-                        Source = "ProfileProcess"
-                    });
-
-                    Interlocked.Increment(ref _totalFailedRequests);
-                }
-            }
-            finally
-            {
-                if (profileBuffer != null && profileBuffer != buffer)
-                {
-                    profileBuffer = null; // Không trả lại pool nếu kích thước khác
-                }
-                if (buffer != null && buffer != profileBuffer)
-                {
-                    ReturnBufferToPool(buffer);
-                }
-            }
-        }
-
-        // Các phương thức khác giữ nguyên...
-
-        private async Task ProcessAuthenticatedRequestAsync(
-            ClientConnection connection,
-            string request,
-            NetworkStream stream,
-            CancellationToken stoppingToken)
-        {
-            try
-            {
-                if (request == "PING")
-                {
-                    await SendResponseAsync(stream, "PONG", stoppingToken);
-                    AddLog(new LogEntry
-                    {
-                        Timestamp = DateTime.Now,
-                        Message = $"Ping request from {connection.IpAddress} - responded with PONG",
-                        Level = LogLevel.Information,
-                        Source = "Ping"
-                    });
-                }
-                else if (request == "SEND_PROFILE")
-                {
-                    await HandleSendProfileAsync(connection, stream, stoppingToken);
-                }
-                else if (request == "SEND_PROFILES")
-                {
-                    await HandleSendProfilesAsync(connection, stream, stoppingToken);
-                }
-                else if (request == "GET_PROFILES")
-                {
-                    await HandleGetProfilesAsync(connection, stream, stoppingToken);
-                }
-                else if (request.StartsWith("GET_PROFILE_DETAILS "))
-                {
-                    string profileName = request.Substring("GET_PROFILE_DETAILS ".Length).Trim();
-                    await HandleGetProfileDetailsAsync(connection, stream, profileName, stoppingToken);
-                }
-                else if (request.StartsWith("SILENT_SYNC"))
-                {
-                    await HandleSilentSyncAsync(connection, stream, stoppingToken);
-                }
-                else
-                {
-                    await SendResponseAsync(stream, "INVALID_REQUEST", stoppingToken);
-                    _logger.LogWarning("Invalid request from client {ClientId}: {Request}", connection.Id, request);
-
-                    AddLog(new LogEntry
-                    {
-                        Timestamp = DateTime.Now,
-                        Message = $"Invalid request from {connection.IpAddress}: {request}",
-                        Level = LogLevel.Warning,
-                        Source = "Request"
-                    });
-
-                    Interlocked.Increment(ref _totalFailedRequests);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error processing authenticated request from client {ClientId}: {Request}",
-                    connection.Id, request);
-
-                AddLog(new LogEntry
-                {
-                    Timestamp = DateTime.Now,
-                    Message = $"Error processing request from {connection.IpAddress}: {ex.Message}",
-                    Level = LogLevel.Error,
-                    Source = "Request"
-                });
-
-                Interlocked.Increment(ref _totalFailedRequests);
-                throw;
-            }
-        }
-
-        private async Task SendResponseAsync(NetworkStream stream, string response, CancellationToken stoppingToken)
-        {
-            try
-            {
-                byte[] responseBytes = Encoding.UTF8.GetBytes(response);
-                byte[] lengthBytes = BitConverter.GetBytes(responseBytes.Length);
-
-                // Gửi tiền tố độ dài
-                await stream.WriteAsync(lengthBytes, 0, lengthBytes.Length, stoppingToken);
-
-                // Gửi dữ liệu phản hồi
-                await stream.WriteAsync(responseBytes, 0, responseBytes.Length, stoppingToken);
-                await stream.FlushAsync(stoppingToken);
-
-                string logResponse = response.Length > 100 ? response.Substring(0, 100) + "..." : response;
-                _logger.LogDebug("Sent response: {Response}", logResponse);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error sending response: {Message}", ex.Message);
-                throw;
-            }
-        }
-
-        private async Task HandleSendProfilesAsync(ClientConnection connection, NetworkStream stream, CancellationToken stoppingToken)
-        {
-            await SendResponseAsync(stream, "READY_TO_RECEIVE", stoppingToken);
-            _logger.LogInformation("Sent READY_TO_RECEIVE to client {ClientId} for batch profiles", connection.Id);
-
-            AddLog(new LogEntry
-            {
-                Timestamp = DateTime.Now,
-                Message = $"Ready to receive multiple profiles from {connection.IpAddress}",
-                Level = LogLevel.Information,
-                Source = "ProfileBatchReceive"
-            });
-
-            string backupFolder = Path.Combine(_dataFolder, "Backup");
-            if (!Directory.Exists(backupFolder))
-            {
-                Directory.CreateDirectory(backupFolder);
-                _logger.LogInformation("Created Backup directory at {Path}", backupFolder);
-            }
-
-            int profileCount = 0;
-            int errorCount = 0;
-            byte[] buffer = GetBufferFromPool();
-
-            try
-            {
-                while (!stoppingToken.IsCancellationRequested)
-                {
-                    int bytesRead = await ReadBytesAsync(stream, buffer, 0, 4, stoppingToken);
-                    if (bytesRead < 4)
-                    {
-                        _logger.LogInformation("Client {ClientId} finished sending profiles. Total received: {Count}",
-                            connection.Id, profileCount);
-                        break;
-                    }
-
-                    int profileLength = BitConverter.ToInt32(buffer, 0);
-                    if (profileLength == 0)
-                    {
-                        _logger.LogInformation("Received end marker (0) from client {ClientId}. Total profiles: {Count}",
-                            connection.Id, profileCount);
-                        break;
-                    }
-
-                    if (profileLength < 0 || profileLength > 5 * 1024 * 1024)
-                    {
-                        _logger.LogWarning("Invalid profile length from client {ClientId}: {Length}",
-                            connection.Id, profileLength);
-                        errorCount++;
-                        break;
-                    }
-
-                    byte[] profileBuffer = profileLength > buffer.Length ? new byte[profileLength] : buffer;
-                    if (profileLength > buffer.Length)
-                    {
-                        ReturnBufferToPool(buffer);
-                        buffer = profileBuffer; // Cập nhật buffer để trả lại sau
-                    }
-
-                    bytesRead = await ReadBytesAsync(stream, profileBuffer, 0, profileLength, stoppingToken);
-                    if (bytesRead < profileLength)
-                    {
-                        _logger.LogWarning("Connection closed by client {ClientId} before receiving full profile data",
-                            connection.Id);
-                        errorCount++;
-                        break;
-                    }
-
-                    string jsonProfile = Encoding.UTF8.GetString(profileBuffer, 0, bytesRead);
                     try
                     {
-                        var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-                        ClientProfile profile = JsonSerializer.Deserialize<ClientProfile>(jsonProfile, options);
-
-                        if (profile != null)
-                        {
-                            string filePath = Path.Combine(backupFolder, $"profile_{profileCount}_{DateTime.Now:yyyyMMdd_HHmmss}.json");
-                            await File.WriteAllTextAsync(filePath, jsonProfile, stoppingToken);
-
-                            var existingProfile = _profileManager.GetProfileById(profile.Id);
-                            if (existingProfile == null)
-                            {
-                                _profileManager.AddProfile(profile);
-                            }
-                            else
-                            {
-                                _profileManager.UpdateProfile(profile);
-                            }
-
-                            profileCount++;
-                            Interlocked.Increment(ref _totalProfilesReceived);
-
-                            _logger.LogDebug("Processed profile {Count}: {Name} (ID: {Id}) from client {ClientId}",
-                                profileCount, profile.Name, profile.Id, connection.Id);
-                        }
+                        var client = await _listener.AcceptTcpClientAsync();
+                        _ = ProcessClientAsync(client, stoppingToken);
+                    }
+                    catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                    {
+                        break;
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogError(ex, "Error processing profile JSON at index {Count} from client {ClientId}",
-                            profileCount, connection.Id);
+                        _logger.LogError(ex, "Lỗi khi chấp nhận kết nối TCP");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi khởi động TCP Server");
+            }
+            finally
+            {
+                _listener?.Stop();
+                _logger.LogInformation("TCP Server đã dừng");
+            }
+        }
+
+        private async Task ProcessClientAsync(TcpClient client, CancellationToken stoppingToken)
+        {
+            string clientIp = (client.Client.RemoteEndPoint as IPEndPoint)?.Address.ToString() ?? "unknown";
+            _logger.LogInformation("Kết nối mới từ {0}", clientIp);
+
+            await _connectionSemaphore.WaitAsync(stoppingToken);
+            try
+            {
+                using (client)
+                {
+                    var stream = client.GetStream();
+                    client.ReceiveTimeout = 30000; // 30 giây timeout
+                    client.SendTimeout = 30000;
+
+                    // Đọc độ dài lệnh
+                    byte[] lengthBuffer = new byte[4];
+                    int bytesRead = await stream.ReadAsync(lengthBuffer, 0, 4, stoppingToken);
+                    if (bytesRead < 4)
+                    {
+                        _logger.LogWarning("Kết nối từ {0} bị đóng đột ngột", clientIp);
+                        return;
+                    }
+
+                    int commandLength = BitConverter.ToInt32(lengthBuffer, 0);
+                    if (commandLength <= 0 || commandLength > 1024 * 1024) // Giới hạn 1MB
+                    {
+                        _logger.LogWarning("Độ dài lệnh không hợp lệ từ {0}: {1}", clientIp, commandLength);
+                        return;
+                    }
+
+                    // Đọc lệnh
+                    byte[] commandBuffer = new byte[commandLength];
+                    bytesRead = await stream.ReadAsync(commandBuffer, 0, commandLength, stoppingToken);
+                    if (bytesRead < commandLength)
+                    {
+                        _logger.LogWarning("Không đọc đủ dữ liệu lệnh từ {0}", clientIp);
+                        return;
+                    }
+
+                    string command = Encoding.UTF8.GetString(commandBuffer, 0, bytesRead);
+                    _logger.LogInformation("Nhận lệnh từ {0}: {1}", clientIp, command);
+
+                    // Xử lý lệnh
+                    if (command.StartsWith("AUTH:"))
+                    {
+                        // Phân tích lệnh
+                        string[] parts = command.Split(new[] { ' ' }, 2);
+                        if (parts.Length < 2)
+                        {
+                            await SendResponseAsync(stream, "INVALID_COMMAND");
+                            return;
+                        }
+
+                        string authPart = parts[0];
+                        string actualCommand = parts[1];
+
+                        // Kiểm tra xác thực - đơn giản hóa
+                        string[] authParts = authPart.Split(':');
+                        if (authParts.Length < 2)
+                        {
+                            await SendResponseAsync(stream, "INVALID_AUTH");
+                            return;
+                        }
+
+                        // Xử lý lệnh sau khi xác thực
+                        if (actualCommand == "GET_PROFILES")
+                        {
+                            await HandleGetProfilesAsync(stream);
+                        }
+                        else if (actualCommand.StartsWith("GET_PROFILE_DETAILS"))
+                        {
+                            string[] cmdParts = actualCommand.Split(' ');
+                            if (cmdParts.Length < 2)
+                            {
+                                await SendResponseAsync(stream, "MISSING_PROFILE_NAME");
+                                return;
+                            }
+
+                            string profileName = cmdParts[1];
+                            await HandleGetProfileDetailsAsync(stream, profileName);
+                        }
+                        else if (actualCommand == "SEND_PROFILES")
+                        {
+                            await SendResponseAsync(stream, "READY_TO_RECEIVE");
+                            await HandleReceiveProfilesAsync(stream, clientIp);
+                        }
+                        else
+                        {
+                            await SendResponseAsync(stream, "UNKNOWN_COMMAND");
+                        }
+                    }
+                    else
+                    {
+                        await SendResponseAsync(stream, "AUTH_REQUIRED");
+                    }
+                }
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                // Khi service đang dừng, bỏ qua lỗi
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi xử lý kết nối từ {0}", clientIp);
+            }
+            finally
+            {
+                _connectionSemaphore.Release();
+                _logger.LogInformation("Đã đóng kết nối từ {0}", clientIp);
+            }
+        }
+
+        private async Task SendResponseAsync(NetworkStream stream, string response)
+        {
+            byte[] responseBytes = Encoding.UTF8.GetBytes(response);
+            byte[] lengthBytes = BitConverter.GetBytes(responseBytes.Length);
+
+            await stream.WriteAsync(lengthBytes, 0, lengthBytes.Length);
+            await stream.WriteAsync(responseBytes, 0, responseBytes.Length);
+            await stream.FlushAsync();
+        }
+
+        private async Task HandleGetProfilesAsync(NetworkStream stream)
+        {
+            try
+            {
+                var profiles = await _profileService.GetAllProfilesAsync();
+
+                if (profiles.Count == 0)
+                {
+                    await SendResponseAsync(stream, "NO_PROFILES");
+                    return;
+                }
+
+                // Chỉ gửi danh sách tên profile
+                List<string> profileNames = new List<string>();
+                foreach (var profile in profiles)
+                {
+                    profileNames.Add(profile.Name);
+                }
+
+                string response = string.Join(",", profileNames);
+                await SendResponseAsync(stream, response);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi xử lý yêu cầu GET_PROFILES");
+                await SendResponseAsync(stream, "ERROR:INTERNAL_SERVER_ERROR");
+            }
+        }
+
+        private async Task HandleGetProfileDetailsAsync(NetworkStream stream, string profileName)
+        {
+            try
+            {
+                var profile = await _profileService.GetProfileByNameAsync(profileName);
+
+                if (profile == null)
+                {
+                    await SendResponseAsync(stream, "PROFILE_NOT_FOUND");
+                    return;
+                }
+
+                // Sử dụng System.Text.Json để serialize profile
+                var options = new JsonSerializerOptions
+                {
+                    WriteIndented = true,
+                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+                };
+
+                string json = JsonSerializer.Serialize(profile, options);
+                await SendResponseAsync(stream, json);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi xử lý yêu cầu GET_PROFILE_DETAILS cho {0}", profileName);
+                await SendResponseAsync(stream, "ERROR:INTERNAL_SERVER_ERROR");
+            }
+        }
+
+        private async Task HandleReceiveProfilesAsync(NetworkStream stream, string clientIp)
+        {
+            try
+            {
+                int processedCount = 0;
+                int errorCount = 0;
+
+                // Đọc độ dài profile
+                byte[] lengthBuffer = new byte[4];
+
+                while (true)
+                {
+                    int bytesRead = await stream.ReadAsync(lengthBuffer, 0, 4);
+                    if (bytesRead < 4)
+                    {
+                        _logger.LogWarning("Kết nối từ {0} bị đóng đột ngột khi nhận profiles", clientIp);
+                        break;
+                    }
+
+                    int profileLength = BitConverter.ToInt32(lengthBuffer, 0);
+
+                    // Marker kết thúc
+                    if (profileLength == 0)
+                    {
+                        _logger.LogInformation("Kết thúc nhận profiles từ {0}", clientIp);
+                        break;
+                    }
+
+                    if (profileLength < 0 || profileLength > 5 * 1024 * 1024) // Giới hạn 5MB
+                    {
+                        _logger.LogWarning("Độ dài profile không hợp lệ từ {0}: {1}", clientIp, profileLength);
+                        await SendResponseAsync(stream, "ERROR:INVALID_LENGTH");
+                        errorCount++;
+                        continue;
+                    }
+
+                    // Đọc dữ liệu profile
+                    byte[] profileBuffer = new byte[profileLength];
+                    bytesRead = await stream.ReadAsync(profileBuffer, 0, profileLength);
+
+                    if (bytesRead < profileLength)
+                    {
+                        _logger.LogWarning("Không đọc đủ dữ liệu profile từ {0}", clientIp);
+                        await SendResponseAsync(stream, "ERROR:INCOMPLETE_DATA");
+                        errorCount++;
+                        continue;
+                    }
+
+                    // Phân tích profile
+                    string profileJson = Encoding.UTF8.GetString(profileBuffer, 0, bytesRead);
+
+                    try
+                    {
+                        var profile = JsonSerializer.Deserialize<ClientProfile>(profileJson, new JsonSerializerOptions
+                        {
+                            PropertyNameCaseInsensitive = true
+                        });
+
+                        if (profile == null)
+                        {
+                            await SendResponseAsync(stream, "ERROR:INVALID_PROFILE_DATA");
+                            errorCount++;
+                            continue;
+                        }
+
+                        // Kiểm tra tính hợp lệ của profile
+                        if (string.IsNullOrEmpty(profile.Name) || string.IsNullOrEmpty(profile.AppID) || string.IsNullOrEmpty(profile.InstallDirectory))
+                        {
+                            await SendResponseAsync(stream, "ERROR:MISSING_REQUIRED_FIELDS");
+                            errorCount++;
+                            continue;
+                        }
+
+                        // Kiểm tra xem profile đã tồn tại chưa
+                        var existingProfile = await _profileService.GetProfileByNameAsync(profile.Name);
+
+                        if (existingProfile != null)
+                        {
+                            // Cập nhật profile hiện có
+                            profile.Id = existingProfile.Id;
+                            await _profileService.UpdateProfileAsync(profile);
+                            await SendResponseAsync(stream, $"SUCCESS:UPDATED:{profile.Name}");
+                        }
+                        else
+                        {
+                            // Thêm profile mới
+                            await _profileService.AddProfileAsync(profile);
+                            await SendResponseAsync(stream, $"SUCCESS:ADDED:{profile.Name}");
+                        }
+
+                        processedCount++;
+                    }
+                    catch (JsonException ex)
+                    {
+                        _logger.LogError(ex, "Lỗi khi parse JSON profile từ {0}", clientIp);
+                        await SendResponseAsync(stream, "ERROR:INVALID_JSON");
+                        errorCount++;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Lỗi khi xử lý profile từ {0}", clientIp);
+                        await SendResponseAsync(stream, "ERROR:PROCESSING_FAILED");
                         errorCount++;
                     }
                 }
 
-                InvalidateProfileCache();
-
-                _logger.LogInformation("Received {Count} profiles from client {ClientId}. Errors: {ErrorCount}",
-                    profileCount, connection.Id, errorCount);
-
-                AddLog(new LogEntry
-                {
-                    Timestamp = DateTime.Now,
-                    Message = $"Received {profileCount} profiles from {connection.IpAddress}. Errors: {errorCount}",
-                    Level = LogLevel.Information,
-                    Source = "ProfileBatch"
-                });
-
-                await SendResponseAsync(stream, $"DONE:{profileCount}:{errorCount}", stoppingToken);
+                // Gửi phản hồi tổng kết
+                await SendResponseAsync(stream, $"DONE:{processedCount}:{errorCount}");
+                _logger.LogInformation("Đã nhận {0} profiles, {1} lỗi từ {2}", processedCount, errorCount, clientIp);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error in batch profile receive from client {ClientId}", connection.Id);
-                AddLog(new LogEntry
-                {
-                    Timestamp = DateTime.Now,
-                    Message = $"Error receiving batch profiles from {connection.IpAddress}: {ex.Message}",
-                    Level = LogLevel.Error,
-                    Source = "ProfileBatch"
-                });
-                await SendResponseAsync(stream, $"ERROR:{ex.Message}", stoppingToken);
-            }
-            finally
-            {
-                ReturnBufferToPool(buffer);
+                _logger.LogError(ex, "Lỗi khi nhận profiles từ {0}", clientIp);
+                await SendResponseAsync(stream, "ERROR:INTERNAL_SERVER_ERROR");
             }
         }
-
-        private async Task HandleSilentSyncAsync(ClientConnection connection, NetworkStream stream, CancellationToken stoppingToken)
-        {
-            await SendResponseAsync(stream, "READY_FOR_SILENT_SYNC", stoppingToken);
-            _logger.LogInformation("Starting silent sync with client {ClientId}", connection.Id);
-
-            AddLog(new LogEntry
-            {
-                Timestamp = DateTime.Now,
-                Message = $"Starting silent sync with client {connection.IpAddress}",
-                Level = LogLevel.Information,
-                Source = "SilentSync"
-            });
-
-            byte[] buffer = GetBufferFromPool();
-            try
-            {
-                int bytesRead = await ReadBytesAsync(stream, buffer, 0, 4, stoppingToken);
-                if (bytesRead < 4)
-                {
-                    _logger.LogWarning("Failed to read batch data length from client {ClientId}", connection.Id);
-                    return;
-                }
-
-                int dataLength = BitConverter.ToInt32(buffer, 0);
-                if (dataLength <= 0 || dataLength > 50 * 1024 * 1024)
-                {
-                    _logger.LogWarning("Invalid batch data length from client {ClientId}: {Length}",
-                        connection.Id, dataLength);
-                    return;
-                }
-
-                byte[] dataBuffer = new byte[dataLength];
-                int totalRead = 0;
-                int readSize = Math.Min(buffer.Length, dataLength);
-
-                while (totalRead < dataLength)
-                {
-                    int toRead = Math.Min(readSize, dataLength - totalRead);
-                    bytesRead = await ReadBytesAsync(stream, buffer, 0, toRead, stoppingToken);
-                    if (bytesRead <= 0) break;
-
-                    Buffer.BlockCopy(buffer, 0, dataBuffer, totalRead, bytesRead);
-                    totalRead += bytesRead;
-
-                    if (totalRead % (1024 * 1024) == 0)
-                    {
-                        _logger.LogDebug("Received {ReceivedMB}MB / {TotalMB}MB from client {ClientId}",
-                            totalRead / (1024 * 1024), dataLength / (1024 * 1024), connection.Id);
-                    }
-                }
-
-                if (totalRead < dataLength)
-                {
-                    _logger.LogWarning("Incomplete data received from client {ClientId}: {Received}/{Total} bytes",
-                        connection.Id, totalRead, dataLength);
-                    await SendResponseAsync(stream, "ERROR:INCOMPLETE_DATA", stoppingToken);
-                    return;
-                }
-
-                string jsonData = Encoding.UTF8.GetString(dataBuffer, 0, totalRead);
-                try
-                {
-                    var options = new JsonSerializerOptions
-                    {
-                        PropertyNameCaseInsensitive = true,
-                        AllowTrailingCommas = true
-                    };
-                    var profiles = JsonSerializer.Deserialize<List<ClientProfile>>(jsonData, options);
-
-                    if (profiles == null || profiles.Count == 0)
-                    {
-                        _logger.LogWarning("Received empty profile list from client {ClientId}", connection.Id);
-                        await SendResponseAsync(stream, "ERROR:EMPTY_DATA", stoppingToken);
-                        return;
-                    }
-
-                    _logger.LogInformation("Processing {Count} profiles from silent sync with client {ClientId}",
-                        profiles.Count, connection.Id);
-
-                    string backupFolder = Path.Combine(_dataFolder, "SilentSync");
-                    if (!Directory.Exists(backupFolder))
-                    {
-                        Directory.CreateDirectory(backupFolder);
-                    }
-
-                    string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
-                    string backupPath = Path.Combine(backupFolder, $"sync_{connection.IpAddress}_{timestamp}.json");
-                    await File.WriteAllTextAsync(backupPath, jsonData, stoppingToken);
-
-                    int addedCount = 0;
-                    int updatedCount = 0;
-                    int errorCount = 0;
-
-                    foreach (var profile in profiles)
-                    {
-                        try
-                        {
-                            if (profile == null) continue;
-
-                            var existingProfile = _profileManager.GetProfileById(profile.Id);
-                            if (existingProfile == null)
-                            {
-                                _profileManager.AddProfile(profile);
-                                addedCount++;
-                            }
-                            else
-                            {
-                                _profileManager.UpdateProfile(profile);
-                                updatedCount++;
-                            }
-
-                            Interlocked.Increment(ref _totalProfilesReceived);
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogError(ex, "Error processing profile {Id} during silent sync", profile?.Id);
-                            errorCount++;
-                        }
-                    }
-
-                    InvalidateProfileCache();
-
-                    _logger.LogInformation("Silent sync completed. Added: {AddedCount}, Updated: {UpdatedCount}, Errors: {ErrorCount}",
-                        addedCount, updatedCount, errorCount);
-
-                    AddLog(new LogEntry
-                    {
-                        Timestamp = DateTime.Now,
-                        Message = $"Silent sync from {connection.IpAddress}: Added {addedCount}, Updated {updatedCount}, Errors {errorCount}",
-                        Level = LogLevel.Information,
-                        Source = "SilentSync"
-                    });
-
-                    await SendResponseAsync(stream, $"SYNC_COMPLETE:{addedCount}:{updatedCount}:{errorCount}", stoppingToken);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Error processing batch data from client {ClientId}", connection.Id);
-                    AddLog(new LogEntry
-                    {
-                        Timestamp = DateTime.Now,
-                        Message = $"Error in silent sync from {connection.IpAddress}: {ex.Message}",
-                        Level = LogLevel.Error,
-                        Source = "SilentSync"
-                    });
-                    await SendResponseAsync(stream, $"ERROR:{ex.Message}", stoppingToken);
-                }
-            }
-            finally
-            {
-                ReturnBufferToPool(buffer);
-            }
-        }
-
-        private async Task HandleGetProfilesAsync(ClientConnection connection, NetworkStream stream, CancellationToken stoppingToken)
-        {
-            string cacheKey = "all_profiles";
-
-            if (_profileNamesCache.TryGetValue(cacheKey, out var cachedProfiles) && !cachedProfiles.IsExpired)
-            {
-                string response = string.Join(",", cachedProfiles.Item);
-                await SendResponseAsync(stream, response, stoppingToken);
-                _logger.LogInformation("Sent cached profile list to client {ClientId}", connection.Id);
-                return;
-            }
-
-            var profiles = _profileManager.GetAllProfiles();
-            string responseData;
-
-            if (profiles.Count > 0)
-            {
-                var profileNames = profiles.Select(p => p.Name).ToArray();
-                responseData = string.Join(",", profileNames);
-
-                _profileNamesCache[cacheKey] = new CachedItem<List<string>>(
-                    profileNames.ToList(),
-                    TimeSpan.FromMinutes(5)
-                );
-            }
-            else
-            {
-                responseData = "NO_PROFILES";
-            }
-
-            await SendResponseAsync(stream, responseData, stoppingToken);
-
-            AddLog(new LogEntry
-            {
-                Timestamp = DateTime.Now,
-                Message = $"Sent profile list ({profiles.Count} profiles) to {connection.IpAddress}",
-                Level = LogLevel.Information,
-                Source = "GetProfiles"
-            });
-        }
-
-        private async Task HandleGetProfileDetailsAsync(ClientConnection connection, NetworkStream stream, string profileName, CancellationToken stoppingToken)
-        {
-            var profile = _profileManager.GetProfileByName(profileName);
-
-            if (profile != null)
-            {
-                using var ms = new MemoryStream();
-                await JsonSerializer.SerializeAsync(ms, profile, new JsonSerializerOptions { WriteIndented = false }, stoppingToken);
-                ms.Position = 0;
-
-                byte[] buffer = new byte[ms.Length];
-                await ms.ReadAsync(buffer, 0, buffer.Length, stoppingToken);
-
-                byte[] lengthBytes = BitConverter.GetBytes(buffer.Length);
-                await stream.WriteAsync(lengthBytes, 0, lengthBytes.Length, stoppingToken);
-                await stream.WriteAsync(buffer, 0, buffer.Length, stoppingToken);
-                await stream.FlushAsync(stoppingToken);
-
-                _logger.LogInformation("Sent profile details for {Name} to client {ClientId}",
-                    profileName, connection.Id);
-
-                AddLog(new LogEntry
-                {
-                    Timestamp = DateTime.Now,
-                    Message = $"Sent profile details for '{profileName}' to {connection.IpAddress}",
-                    Level = LogLevel.Information,
-                    Source = "GetProfileDetails"
-                });
-            }
-            else
-            {
-                await SendResponseAsync(stream, "PROFILE_NOT_FOUND", stoppingToken);
-                _logger.LogWarning("Profile {Name} not found for client {ClientId}",
-                    profileName, connection.Id);
-
-                AddLog(new LogEntry
-                {
-                    Timestamp = DateTime.Now,
-                    Message = $"Profile '{profileName}' not found - requested by {connection.IpAddress}",
-                    Level = LogLevel.Warning,
-                    Source = "GetProfileDetails"
-                });
-            }
-        }
-
-        private async Task CleanupExpiredConnectionsAsync(CancellationToken cancellationToken)
-        {
-            while (!cancellationToken.IsCancellationRequested)
-            {
-                try
-                {
-                    var now = DateTime.UtcNow;
-                    var expiredConnections = _activeConnections
-                        .Where(kv => (now - kv.Value.LastActivity).TotalMinutes > 10)
-                        .ToList();
-
-                    foreach (var conn in expiredConnections)
-                    {
-                        if (_activeConnections.TryRemove(conn.Key, out var connection))
-                        {
-                            try
-                            {
-                                connection.Client?.Close();
-                                _logger.LogInformation("Closed expired connection from {IpAddress} (inactive for >10 min)",
-                                    connection.IpAddress);
-
-                                AddLog(new LogEntry
-                                {
-                                    Timestamp = DateTime.Now,
-                                    Message = $"Closed inactive connection from {connection.IpAddress}",
-                                    Level = LogLevel.Information,
-                                    Source = "Cleanup"
-                                });
-                            }
-                            catch (Exception ex)
-                            {
-                                _logger.LogWarning(ex, "Error closing expired connection from {IpAddress}",
-                                    connection.IpAddress);
-                            }
-                        }
-                    }
-
-                    if (expiredConnections.Count > 0)
-                    {
-                        _logger.LogInformation("Cleaned up {Count} expired connections", expiredConnections.Count);
-                    }
-
-                    CleanupExpiredCache();
-                    CleanupOldLogs();
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Error cleaning up expired connections");
-                }
-
-                await Task.Delay(TimeSpan.FromMinutes(5), cancellationToken);
-            }
-        }
-
-        private async Task<int> ReadBytesAsync(NetworkStream stream, byte[] buffer, int offset, int count, CancellationToken cancellationToken)
-        {
-            int totalBytesRead = 0;
-
-            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
-
-            try
-            {
-                while (totalBytesRead < count)
-                {
-                    int bytesRead = await stream.ReadAsync(buffer, offset + totalBytesRead, count - totalBytesRead,
-                        linkedCts.Token);
-
-                    if (bytesRead == 0)
-                    {
-                        break;
-                    }
-
-                    totalBytesRead += bytesRead;
-                }
-            }
-            catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)
-            {
-                _logger.LogWarning("Timeout reading from stream after receiving {BytesRead}/{ExpectedBytes} bytes",
-                    totalBytesRead, count);
-            }
-
-            return totalBytesRead;
-        }
-
-        private byte[] GetBufferFromPool()
-        {
-            if (_bufferPool.TryDequeue(out var buffer))
-            {
-                return buffer;
-            }
-            return new byte[BufferSize];
-        }
-
-        private void ReturnBufferToPool(byte[] buffer)
-        {
-            if (buffer != null && buffer.Length == BufferSize && _bufferPool.Count < MaxPoolSize)
-            {
-                Array.Clear(buffer, 0, buffer.Length);
-                _bufferPool.Enqueue(buffer);
-            }
-        }
-
-        private void InvalidateProfileCache()
-        {
-            _profileNamesCache.Clear();
-        }
-
-        private void CleanupExpiredCache()
-        {
-            var expiredCacheKeys = _profileNamesCache
-                .Where(kv => kv.Value.IsExpired)
-                .Select(kv => kv.Key)
-                .ToList();
-
-            foreach (var key in expiredCacheKeys)
-            {
-                _profileNamesCache.TryRemove(key, out _);
-            }
-        }
-
-        private void CleanupOldLogs()
-        {
-            while (_serverLogs.Count > MaxLogEntries)
-            {
-                try
-                {
-                    var orderedLogs = _serverLogs.OrderBy(l => l.Timestamp).ToList();
-                    int removeCount = _serverLogs.Count - MaxLogEntries;
-
-                    for (int i = 0; i < removeCount && i < orderedLogs.Count; i++)
-                    {
-                        _serverLogs.TryTake(out _);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Error cleaning up old logs");
-                    break;
-                }
-            }
-        }
-
-        private void AddLog(LogEntry entry)
-        {
-            if (_serverLogs.Count < MaxLogEntries)
-            {
-                _serverLogs.Add(entry);
-            }
-            else
-            {
-                CleanupOldLogs();
-                _serverLogs.Add(entry);
-            }
-        }
-
-        public List<LogEntry> GetRecentLogs(int count = 100)
-        {
-            return _serverLogs
-                .OrderByDescending(l => l.Timestamp)
-                .Take(count)
-                .ToList();
-        }
-
-        public ServerStats GetServerStats()
-        {
-            return new ServerStats
-            {
-                ActiveConnections = _activeConnections.Count,
-                TotalConnections = _totalConnections,
-                TotalProfilesReceived = _totalProfilesReceived,
-                TotalFailedRequests = _totalFailedRequests,
-                StartTime = _startTime,
-                ServerPort = 61188,
-                BufferPoolSize = _bufferPool.Count,
-                CacheEntries = _profileNamesCache.Count
-            };
-        }
-
-        private readonly DateTime _startTime = DateTime.Now;
 
         public override async Task StopAsync(CancellationToken cancellationToken)
         {
             _listener?.Stop();
-            _logger.LogInformation("TCP Server stopped");
-
-            AddLog(new LogEntry
-            {
-                Timestamp = DateTime.Now,
-                Message = "TCP Server stopped",
-                Level = LogLevel.Information,
-                Source = "System"
-            });
-
+            _logger.LogInformation("TCP Server đã dừng");
             await base.StopAsync(cancellationToken);
         }
-
-        private class CachedItem<T>
-        {
-            public T Item { get; }
-            public DateTime Expiration { get; }
-            public bool IsExpired => DateTime.UtcNow > Expiration;
-
-            public CachedItem(T item, TimeSpan expirationTime)
-            {
-                Item = item;
-                Expiration = DateTime.UtcNow.Add(expirationTime);
-            }
-        }
-
-        private class ClientConnection
-        {
-            public TcpClient Client { get; set; }
-            public DateTime LastActivity { get; set; }
-            public string IpAddress { get; set; }
-            public string Id { get; set; }
-        }
-    }
-
-    public class LogEntry
-    {
-        public DateTime Timestamp { get; set; }
-        public string Message { get; set; }
-        public LogLevel Level { get; set; }
-        public string Source { get; set; }
-    }
-
-    public class ServerStats
-    {
-        public int ActiveConnections { get; set; }
-        public long TotalConnections { get; set; }
-        public long TotalProfilesReceived { get; set; }
-        public long TotalFailedRequests { get; set; }
-        public DateTime StartTime { get; set; }
-        public int ServerPort { get; set; }
-        public int BufferPoolSize { get; set; }
-        public int CacheEntries { get; set; }
-
-        public TimeSpan Uptime => DateTime.Now - StartTime;
     }
 }
