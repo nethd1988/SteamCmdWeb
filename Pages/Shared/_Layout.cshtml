@@ -14,55 +14,55 @@
             --steam-blue: #1b2838;
             --steam-light-blue: #66c0f4;
         }
-        
+
         body {
             background-color: #f8f9fa;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
-        
+
         .navbar {
             background-color: var(--steam-blue);
             box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
         }
-        
+
         .navbar-brand {
             color: var(--steam-light-blue) !important;
             font-weight: bold;
         }
-        
+
         .nav-link {
             color: #ffffff !important;
         }
-        
-        .nav-link:hover, .nav-link:focus {
-            color: var(--steam-light-blue) !important;
-        }
-        
+
+            .nav-link:hover, .nav-link:focus {
+                color: var(--steam-light-blue) !important;
+            }
+
         .footer {
             background-color: var(--steam-blue);
             color: #999;
             padding: 1rem 0;
         }
-        
+
         .card {
             box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
             border: none;
             margin-bottom: 1.5rem;
         }
-        
+
         .card-header {
             font-weight: 500;
         }
-        
+
         .btn-primary {
             background-color: var(--steam-light-blue);
             border-color: var(--steam-light-blue);
         }
-        
-        .btn-primary:hover, .btn-primary:focus {
-            background-color: #4da5d8;
-            border-color: #4da5d8;
-        }
+
+            .btn-primary:hover, .btn-primary:focus {
+                background-color: #4da5d8;
+                border-color: #4da5d8;
+            }
     </style>
 </head>
 <body>
@@ -86,6 +86,11 @@
                         <li class="nav-item">
                             <a class="nav-link" asp-page="/Profiles/Index">
                                 <i class="bi bi-list-check me-1"></i> Profiles
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" asp-page="/SyncManagement">
+                                <i class="bi bi-cloud-download me-1"></i> Quản lý đồng bộ
                             </a>
                         </li>
                         <li class="nav-item">

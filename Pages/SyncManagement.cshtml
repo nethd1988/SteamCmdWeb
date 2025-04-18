@@ -1,0 +1,509 @@
+@page
+@model SteamCmdWeb.Pages.SyncManagementModel
+@{
+    ViewData["Title"] = "Quản lý đồng bộ";
+}
+
+<div class="container">
+    <h1>Quản lý đồng bộ Client</h1>
+
+    <div class="alert alert-info">
+        <h5><i class="bi bi-info-circle me-2"></i>Tính năng đồng bộ tự động</h5>
+        <p>Hệ thống sẽ tự động đồng bộ với các client đã đăng ký mỗi 30 phút. Chỉ các profile có App ID chưa tồn tại trên server sẽ được thêm vào.</p>
+    </div>
+
+    @if (!string.IsNullOrEmpty(Model.StatusMessage))
+    {
+        <div class="alert @(Model.IsSuccess ? "alert-success" : "alert-danger") alert-dismissible fade show" role="alert">
+            @Model.StatusMessage
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    }
+
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">
+                <i class="bi bi-pc-display me-2"></i>
+                Danh sách Client đã đăng ký
+            </h5>
+            <button id="refreshBtn" class="btn btn-outline-primary btn-sm">
+                <i class="bi bi-arrow-clockwise me-1"></i> Làm mới
+            </button>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover table-striped">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Mô tả</th>
+                            <th>Địa chỉ</th>
+                            <th>Đăng ký</th>
+                            <th>Trạng thái</th>
+                            <th>Đồng bộ lần cuối</th>
+                            <th>Thao tác</th>
+                        </tr>
+                    </thead>
+                    <tbody id="clientsTableBody">
+                        @if (Model.Clients.Count == 0)
+                        {
+                            <tr>
+                                <td colspan="7" class="text-center">Chưa có client nào được đăng ký</td>
+                            </tr>
+                        }
+                        else
+                        {
+                            @foreach (var client in Model.Clients)
+                            {
+                                <tr>
+                                    <td>@client.ClientId</td>
+                                    <td>@client.Description</td>
+                                    <td>@client.Address:@client.Port</td>
+                                    <td>@client.RegisteredAt.ToString("dd/MM/yyyy HH:mm")</td>
+                                    <td>
+                                        @if (client.IsActive)
+                                        {
+                                            <span class="badge bg-success">Kích hoạt</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-secondary">Vô hiệu</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (client.LastSuccessfulSync != default)
+                                        {
+                                            @client.LastSuccessfulSync.ToString("dd/MM/yyyy HH:mm")
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">Chưa đồng bộ</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm">
+                                            <button type="button" class="btn btn-primary sync-btn" data-id="@client.ClientId">
+                                                <i class="bi bi-cloud-download"></i> Đồng bộ
+                                            </button>
+                                            <button type="button" class="btn btn-danger unregister-btn" data-id="@client.ClientId" data-name="@client.Description">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="card-footer d-flex justify-content-between">
+            <div>
+                <span class="text-muted">Tổng số: @Model.Clients.Count client</span>
+            </div>
+            <div>
+                <button id="syncAllBtn" class="btn btn-success @(Model.Clients.Count == 0 ? "disabled" : "")" @(Model.Clients.Count == 0 ? "disabled" : "")>
+                    <i class="bi bi-cloud-download me-1"></i> Đồng bộ tất cả
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5><i class="bi bi-plus-circle me-2"></i> Đăng ký Client mới</h5>
+        </div>
+        <div class="card-body">
+            <form id="registerForm">
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label for="clientId" class="form-label">Client ID <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="clientId" name="clientId" required>
+                        <div class="form-text">ID định danh cho client</div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label for="description" class="form-label">Mô tả</label>
+                        <input type="text" class="form-control" id="description" name="description">
+                        <div class="form-text">Mô tả ngắn gọn về client</div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label for="address" class="form-label">Địa chỉ <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="address" name="address" required>
+                        <div class="form-text">Địa chỉ IP hoặc hostname của client</div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label for="port" class="form-label">Cổng <span class="text-danger">*</span></label>
+                        <input type="number" class="form-control" id="port" name="port" value="61188" required>
+                        <div class="form-text">Cổng TCP của client</div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label for="authToken" class="form-label">Token xác thực</label>
+                        <input type="text" class="form-control" id="authToken" name="authToken">
+                        <div class="form-text">Để trống để tạo tự động</div>
+                    </div>
+                    <div class="col-md-6 mb-3 d-flex align-items-end">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="isActive" name="isActive" checked>
+                            <label class="form-check-label" for="isActive">Kích hoạt</label>
+                        </div>
+                    </div>
+                </div>
+                <div class="text-end">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-plus-circle me-1"></i> Đăng ký Client
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Kết quả đồng bộ gần đây -->
+    <div class="card">
+        <div class="card-header">
+            <h5><i class="bi bi-clock-history me-2"></i> Kết quả đồng bộ gần đây</h5>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover table-striped">
+                    <thead>
+                        <tr>
+                            <th>Thời gian</th>
+                            <th>Client</th>
+                            <th>Trạng thái</th>
+                            <th>Tổng số</th>
+                            <th>Profiles mới</th>
+                            <th>Lọc bỏ</th>
+                            <th>Thông báo</th>
+                        </tr>
+                    </thead>
+                    <tbody id="syncResultsTableBody">
+                        @if (Model.SyncResults.Count == 0)
+                        {
+                            <tr>
+                                <td colspan="7" class="text-center">Chưa có kết quả đồng bộ nào</td>
+                            </tr>
+                        }
+                        else
+                        {
+                            @foreach (var result in Model.SyncResults)
+                            {
+                                <tr>
+                                    <td>@result.Timestamp.ToString("dd/MM/yyyy HH:mm:ss")</td>
+                                    <td>@result.ClientId</td>
+                                    <td>
+                                        @if (result.Success)
+                                        {
+                                            <span class="badge bg-success">Thành công</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-danger">Lỗi</span>
+                                        }
+                                    </td>
+                                    <td>@result.TotalProfiles</td>
+                                    <td>@result.NewProfilesAdded</td>
+                                    <td>@result.FilteredProfiles</td>
+                                    <td>@result.Message</td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal xác nhận hủy đăng ký -->
+<div class="modal fade" id="unregisterModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Xác nhận hủy đăng ký</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Bạn có chắc chắn muốn hủy đăng ký client <span id="clientToUnregister"></span>?</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Hủy</button>
+                <button type="button" class="btn btn-danger" id="confirmUnregisterBtn">Xác nhận</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Lấy Anti-Forgery Token từ form
+            var antiForgeryToken = '@Html.AntiForgeryToken().ToString().Replace("\n", "").Replace("\r", "")';
+            var tokenElem = document.querySelector('input[name="__RequestVerificationToken"]');
+            var token = tokenElem ? tokenElem.value : '';
+
+            // Form đăng ký client
+            document.getElementById('registerForm').addEventListener('submit', function(e) {
+                e.preventDefault();
+                
+                const clientData = {
+                    clientId: document.getElementById('clientId').value,
+                    description: document.getElementById('description').value,
+                    address: document.getElementById('address').value,
+                    port: parseInt(document.getElementById('port').value),
+                    authToken: document.getElementById('authToken').value,
+                    isActive: document.getElementById('isActive').checked
+                };
+
+                fetch('/api/SyncManagement/register', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'RequestVerificationToken': token
+                    },
+                    body: JSON.stringify(clientData)
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        showAlert('Đã đăng ký client thành công!', 'success');
+                        document.getElementById('registerForm').reset();
+                        loadClients();
+                    } else {
+                        showAlert('Lỗi: ' + (data.message || 'Không thể đăng ký client'), 'danger');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    showAlert('Lỗi khi đăng ký client: ' + error, 'danger');
+                });
+            });
+
+            // Nút làm mới danh sách
+            document.getElementById('refreshBtn').addEventListener('click', function() {
+                loadClients();
+            });
+            
+            // Nút đồng bộ tất cả
+            document.getElementById('syncAllBtn').addEventListener('click', function() {
+                if (this.classList.contains('disabled')) return;
+                
+                this.disabled = true;
+                this.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Đang đồng bộ...';
+                
+                fetch('/api/SyncManagement/sync-all', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'RequestVerificationToken': token
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        showAlert(`Đồng bộ thành công! Đã thêm ${data.totalNewProfiles} profiles mới từ ${data.successfulSyncs}/${data.totalClients} clients.`, 'success');
+                        loadSyncResults();
+                    } else {
+                        showAlert('Lỗi: ' + (data.message || 'Không thể đồng bộ từ tất cả clients'), 'danger');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    showAlert('Lỗi khi đồng bộ từ tất cả clients: ' + error, 'danger');
+                })
+                .finally(() => {
+                    const button = document.getElementById('syncAllBtn');
+                    button.disabled = false;
+                    button.innerHTML = '<i class="bi bi-cloud-download me-1"></i> Đồng bộ tất cả';
+                });
+            });
+
+            // Xử lý sự kiện cho các nút đồng bộ và hủy đăng ký
+            document.addEventListener('click', function(e) {
+                // Nút đồng bộ
+                if (e.target.closest('.sync-btn')) {
+                    const button = e.target.closest('.sync-btn');
+                    const clientId = button.dataset.id;
+                    syncFromClient(clientId, button);
+                }
+                
+                // Nút hủy đăng ký
+                if (e.target.closest('.unregister-btn')) {
+                    const button = e.target.closest('.unregister-btn');
+                    const clientId = button.dataset.id;
+                    const description = button.dataset.name || clientId;
+                    
+                    // Hiển thị modal xác nhận
+                    document.getElementById('clientToUnregister').textContent = description;
+                    document.getElementById('confirmUnregisterBtn').setAttribute('data-id', clientId);
+                    
+                    const modal = new bootstrap.Modal(document.getElementById('unregisterModal'));
+                    modal.show();
+                }
+            });
+
+            // Xử lý xác nhận hủy đăng ký
+            document.getElementById('confirmUnregisterBtn').addEventListener('click', function() {
+                const clientId = this.getAttribute('data-id');
+                
+                fetch(`/api/SyncManagement/unregister/${clientId}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'RequestVerificationToken': token
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        showAlert('Đã hủy đăng ký client thành công!', 'success');
+                        loadClients();
+                    } else {
+                        showAlert('Lỗi: ' + (data.message || 'Không thể hủy đăng ký client'), 'danger');
+                    }
+                    
+                    // Đóng modal
+                    const modal = bootstrap.Modal.getInstance(document.getElementById('unregisterModal'));
+                    modal.hide();
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    showAlert('Lỗi khi hủy đăng ký client: ' + error, 'danger');
+                    
+                    // Đóng modal
+                    const modal = bootstrap.Modal.getInstance(document.getElementById('unregisterModal'));
+                    modal.hide();
+                });
+            });
+
+            // Hàm đồng bộ từ client cụ thể
+            function syncFromClient(clientId, buttonElement) {
+                // Lưu nội dung gốc của nút
+                const originalContent = buttonElement.innerHTML;
+                
+                // Hiển thị trạng thái đang đồng bộ
+                buttonElement.disabled = true;
+                buttonElement.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+                
+                fetch(`/api/SyncManagement/sync/${clientId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'RequestVerificationToken': token
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        showAlert(`Đồng bộ thành công từ client ${clientId}! Đã thêm ${data.newProfilesAdded} profiles mới.`, 'success');
+                        loadSyncResults();
+                    } else {
+                        showAlert('Lỗi: ' + (data.message || 'Không thể đồng bộ từ client'), 'danger');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    showAlert('Lỗi khi đồng bộ từ client: ' + error, 'danger');
+                })
+                .finally(() => {
+                    // Khôi phục nút về trạng thái ban đầu
+                    buttonElement.disabled = false;
+                    buttonElement.innerHTML = originalContent;
+                });
+            }
+
+            // Tải danh sách clients
+            function loadClients() {
+                fetch('/api/SyncManagement/clients')
+                .then(response => response.json())
+                .then(data => {
+                    const tableBody = document.getElementById('clientsTableBody');
+                    tableBody.innerHTML = '';
+                    
+                    if (!data || data.length === 0) {
+                        tableBody.innerHTML = '<tr><td colspan="7" class="text-center">Chưa có client nào được đăng ký</td></tr>';
+                        return;
+                    }
+                    
+                    data.forEach(client => {
+                        const row = document.createElement('tr');
+                        
+                        const lastSync = client.lastSuccessfulSync ? new Date(client.lastSuccessfulSync).toLocaleString() : '<span class="text-muted">Chưa đồng bộ</span>';
+                        
+                        row.innerHTML = `
+                            <td>${client.clientId}</td>
+                            <td>${client.description || ''}</td>
+                            <td>${client.address}:${client.port}</td>
+                            <td>${new Date(client.registeredAt).toLocaleString()}</td>
+                            <td>
+                                ${client.isActive 
+                                    ? '<span class="badge bg-success">Kích hoạt</span>' 
+                                    : '<span class="badge bg-secondary">Vô hiệu</span>'}
+                            </td>
+                            <td>${lastSync}</td>
+                            <td>
+                                <div class="btn-group btn-group-sm">
+                                    <button type="button" class="btn btn-primary sync-btn" data-id="${client.clientId}">
+                                        <i class="bi bi-cloud-download"></i> Đồng bộ
+                                    </button>
+                                    <button type="button" class="btn btn-danger unregister-btn" data-id="${client.clientId}" data-name="${client.description || client.clientId}">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        `;
+                        
+                        tableBody.appendChild(row);
+                    });
+                    
+                    // Cập nhật trạng thái nút đồng bộ tất cả
+                    const syncAllBtn = document.getElementById('syncAllBtn');
+                    if (data.length > 0) {
+                        syncAllBtn.classList.remove('disabled');
+                        syncAllBtn.disabled = false;
+                    } else {
+                        syncAllBtn.classList.add('disabled');
+                        syncAllBtn.disabled = true;
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    showAlert('Lỗi khi tải danh sách clients: ' + error, 'danger');
+                });
+            }
+
+            // Tải kết quả đồng bộ
+            function loadSyncResults() {
+                // Gọi API hoặc refresh trang để cập nhật kết quả đồng bộ
+                // Hoặc có thể sử dụng dữ liệu từ model
+                location.reload();
+            }
+
+            // Hiển thị thông báo
+            function showAlert(message, type) {
+                // Tạo thẻ div thông báo
+                const alertDiv = document.createElement('div');
+                alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+                alertDiv.role = 'alert';
+                alertDiv.innerHTML = `
+                    ${message}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                `;
+                
+                // Thêm thông báo vào đầu container
+                const container = document.querySelector('.container');
+                container.insertBefore(alertDiv, container.firstChild);
+                
+                // Tự động ẩn sau 5 giây
+                setTimeout(() => {
+                    if (alertDiv && alertDiv.parentNode) {
+                        alertDiv.parentNode.removeChild(alertDiv);
+                    }
+                }, 5000);
+            }
+        });
+    </script>
+}

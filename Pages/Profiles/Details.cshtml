@@ -53,7 +53,7 @@
                                 <td>@Model.Profile.AppID</td>
                             </tr>
                             <tr>
-<th>Thư mục cài đặt:</th>
+                                <th>Thư mục cài đặt:</th>
                                 <td>@Model.Profile.InstallDirectory</td>
                             </tr>
                             <tr>
@@ -82,7 +82,21 @@
                                     }
                                     else
                                     {
-                                        <span class="badge bg-info">Tài khoản</span>
+                                        <div>
+                                            <strong>Tài khoản:</strong> @Model.Profile.SteamUsername<br />
+                                            <strong>Mật khẩu:</strong>
+                                            @if (!string.IsNullOrEmpty(Model.Profile.SteamPassword))
+                                            {
+                                                <span id="passwordField">******</span>
+                                                <button type="button" class="btn btn-sm btn-outline-secondary" id="showPasswordBtn">
+                                                    <i class="bi bi-eye"></i>
+                                                </button>
+                                            }
+                                            else
+                                            {
+                                                <span>Không có</span>
+                                            }
+                                        </div>
                                     }
                                 </td>
                             </tr>
@@ -132,7 +146,7 @@
                         <a asp-page="Edit" asp-route-id="@Model.Profile.Id" class="btn btn-primary">
                             <i class="bi bi-pencil me-1"></i> Chỉnh sửa
                         </a>
-                        <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#deleteConfirmModal">
+                        <button type="button class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#deleteConfirmModal">
                             <i class="bi bi-trash me-1"></i> Xóa
                         </button>
                     </div>
@@ -171,4 +185,26 @@
             </div>
         </div>
     </div>
+}
+
+@section Scripts {
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const showPasswordBtn = document.getElementById('showPasswordBtn');
+            if (showPasswordBtn) {
+                const passwordField = document.getElementById('passwordField');
+                const passwordValue = '@Model.Profile.SteamPassword';
+
+                showPasswordBtn.addEventListener('click', function() {
+                    if (passwordField.textContent === '******') {
+                        passwordField.textContent = passwordValue;
+                        showPasswordBtn.innerHTML = '<i class="bi bi-eye-slash"></i>';
+                    } else {
+                        passwordField.textContent = '******';
+                        showPasswordBtn.innerHTML = '<i class="bi bi-eye"></i>';
+                    }
+                });
+            }
+        });
+    </script>
 }

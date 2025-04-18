@@ -34,9 +34,10 @@ builder.Services.AddSingleton<SystemMonitoringService>();
 builder.Services.AddSingleton<AppProfileManager>();
 builder.Services.AddSingleton<ProfileMigrationService>();
 builder.Services.AddSingleton<SilentSyncService>();
+builder.Services.AddSingleton<SyncService>();
+builder.Services.AddHostedService<SyncBackgroundService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<SystemMonitoringService>());
 builder.Services.AddHostedService<TcpServerService>();
-builder.Services.AddSingleton<DecryptionService>();
 
 // Thêm Memory Cache cho cải thiện hiệu suất
 builder.Services.AddMemoryCache();
@@ -97,6 +98,14 @@ if (!File.Exists(profilesFilePath))
 {
     File.WriteAllText(profilesFilePath, "[]");
     app.Logger.LogInformation("Đã tạo file profiles.json trống");
+}
+
+// Thêm thư mục cho đồng bộ
+var syncFolder = Path.Combine(dataFolder, "Sync");
+if (!Directory.Exists(syncFolder))
+{
+    Directory.CreateDirectory(syncFolder);
+    app.Logger.LogInformation("Đã tạo thư mục Sync");
 }
 
 // Health Check endpoint

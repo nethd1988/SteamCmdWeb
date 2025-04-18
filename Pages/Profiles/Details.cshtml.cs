@@ -23,11 +23,13 @@ namespace SteamCmdWeb.Pages.Profiles
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
+        // Sửa phương thức OnGetAsync để sử dụng dịch vụ giải mã
         public async Task<IActionResult> OnGetAsync(int id)
         {
             try
             {
-                Profile = await _profileService.GetProfileByIdAsync(id);
+                // Thay đổi để sử dụng phương thức GetDecryptedProfileByIdAsync
+                Profile = await _profileService.GetDecryptedProfileByIdAsync(id);
                 if (Profile == null)
                 {
                     _logger.LogWarning("Không tìm thấy profile có ID {0}", id);
