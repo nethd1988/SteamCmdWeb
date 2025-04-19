@@ -21,26 +21,11 @@ builder.Services.AddControllers()
         options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
     });
 
-// Đăng ký TcpServerService
-builder.Services.AddHostedService<TcpServerService>();
-
-// Xóa nội dung hiện tại và thêm cấu hình đơn giản
 builder.Services.AddRazorPages();
 
 // Đăng ký các dịch vụ tùy chỉnh
+builder.Services.AddSingleton<DecryptionService>();
 builder.Services.AddSingleton<ProfileService>();
-builder.Services.AddSingleton<DecryptionService>();
-builder.Services.AddSingleton<SystemMonitoringService>();
-builder.Services.AddSingleton<AppProfileManager>();
-builder.Services.AddSingleton<ProfileMigrationService>();
-builder.Services.AddSingleton<SilentSyncService>();
-builder.Services.AddSingleton<SyncService>();
-builder.Services.AddHostedService<SyncBackgroundService>();
-builder.Services.AddHostedService(sp => sp.GetRequiredService<SystemMonitoringService>());
-builder.Services.AddHostedService<TcpServerService>();
-// Thêm các dòng sau vào phần đăng ký dịch vụ trong hàm Main
-// Sau dòng builder.Services.AddSingleton<ProfileService>();
-builder.Services.AddSingleton<DecryptionService>();
 builder.Services.AddSingleton<SyncService>();
 builder.Services.AddHostedService<SyncBackgroundService>();
 builder.Services.AddHostedService<TcpServerService>();

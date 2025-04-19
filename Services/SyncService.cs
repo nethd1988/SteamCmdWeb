@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
-using System.Net.Http;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Text;
@@ -17,497 +17,277 @@ namespace SteamCmdWeb.Services
     {
         private readonly ILogger<SyncService> _logger;
         private readonly ProfileService _profileService;
-        private readonly List<ClientRegistration> _registeredClients = new List<ClientRegistration>();
+        private readonly DecryptionService _decryptionService;
         private readonly List<SyncResult> _syncResults = new List<SyncResult>();
-        private readonly HttpClient _httpClient;
-        private readonly object _clientsLock = new object();
-        private readonly object _resultsLock = new object();
+        private readonly object _syncLock = new object();
+        private readonly List<ClientRegistration> _knownClients = new List<ClientRegistration>();
+        private bool _isSyncing = false;
 
-        public SyncService(ILogger<SyncService> logger, ProfileService profileService)
+        private const string DEFAULT_SERVER = "idckz.ddnsfree.com";
+        private const int DEFAULT_PORT = 61188;
+
+        public SyncService(
+            ILogger<SyncService> logger,
+            ProfileService profileService,
+            DecryptionService decryptionService)
         {
-            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-            _profileService = profileService ?? throw new ArgumentNullException(nameof(profileService));
-            _httpClient = new HttpClient();
-            _httpClient.Timeout = TimeSpan.FromSeconds(30);
+            _logger = logger;
+            _profileService = profileService;
+            _decryptionService = decryptionService;
+            LoadKnownClients();
         }
 
-        public List<ClientRegistration> GetRegisteredClients()
+        private void LoadKnownClients()
         {
-            lock (_clientsLock)
+            try
             {
-                return new List<ClientRegistration>(_registeredClients);
-            }
-        }
-
-        public void RegisterClient(ClientRegistration client)
-        {
-            if (client == null)
-                throw new ArgumentNullException(nameof(client));
-
-            lock (_clientsLock)
-            {
-                _registeredClients.RemoveAll(c => c.ClientId == client.ClientId);
-                _registeredClients.Add(client);
-                _logger.LogInformation("Đã đăng ký client: {ClientId}, {Address}:{Port}", client.ClientId, client.Address, client.Port);
-            }
-        }
-
-        public bool UnregisterClient(string clientId)
-        {
-            if (string.IsNullOrEmpty(clientId))
-                throw new ArgumentNullException(nameof(clientId));
-
-            lock (_clientsLock)
-            {
-                int count = _registeredClients.RemoveAll(c => c.ClientId == clientId);
-                if (count > 0)
+                // Thêm client mặc định
+                _knownClients.Add(new ClientRegistration
                 {
-                    _logger.LogInformation("Đã hủy đăng ký client: {ClientId}", clientId);
-                    return true;
-                }
-                return false;
+                    ClientId = "default-client",
+                    Description = "Client mặc định",
+                    Address = DEFAULT_SERVER,
+                    Port = DEFAULT_PORT,
+                    IsActive = true,
+                    RegisteredAt = DateTime.Now,
+                    LastSuccessfulSync = DateTime.MinValue,
+                    LastSyncAttempt = DateTime.MinValue
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi tải danh sách client đã biết");
             }
         }
 
         public List<SyncResult> GetSyncResults()
         {
-            lock (_resultsLock)
+            lock (_syncLock)
             {
-                return new List<SyncResult>(_syncResults);
-            }
-        }
-
-        private void AddSyncResult(SyncResult result)
-        {
-            if (result == null)
-                return;
-
-            lock (_resultsLock)
-            {
-                if (_syncResults.Count >= 100)
-                {
-                    _syncResults.RemoveAt(0);
-                }
-                _syncResults.Add(result);
-            }
-        }
-
-        public async Task<SyncResult> SyncFromIpAsync(string ip, int port = 61188)
-        {
-            try
-            {
-                _logger.LogInformation("Bắt đầu đồng bộ từ {IP}:{Port}", ip, port);
-
-                string url = $"http://{ip}:{port}/api/profiles";
-                var response = await _httpClient.GetAsync(url);
-
-                if (!response.IsSuccessStatusCode)
-                {
-                    string errorMessage = $"Lỗi khi kết nối đến client: {response.StatusCode}";
-                    _logger.LogError(errorMessage);
-                    var result = new SyncResult
-                    {
-                        ClientId = $"{ip}:{port}",
-                        Success = false,
-                        Message = errorMessage,
-                        Timestamp = DateTime.Now
-                    };
-                    AddSyncResult(result);
-                    return result;
-                }
-
-                var content = await response.Content.ReadAsStringAsync();
-                var clientProfiles = JsonSerializer.Deserialize<List<ClientProfile>>(content, new JsonSerializerOptions
-                {
-                    PropertyNameCaseInsensitive = true
-                });
-
-                if (clientProfiles == null || clientProfiles.Count == 0)
-                {
-                    var noProfilesResult = new SyncResult
-                    {
-                        ClientId = $"{ip}:{port}",
-                        Success = true,
-                        Message = "Không có profile nào để đồng bộ",
-                        Timestamp = DateTime.Now,
-                        TotalProfiles = 0
-                    };
-                    AddSyncResult(noProfilesResult);
-                    return noProfilesResult;
-                }
-
-                return await ProcessSyncProfilesAsync(clientProfiles, $"{ip}:{port}");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Lỗi khi đồng bộ từ {IP}:{Port}", ip, port);
-                var result = new SyncResult
-                {
-                    ClientId = $"{ip}:{port}",
-                    Success = false,
-                    Message = $"Lỗi: {ex.Message}",
-                    Timestamp = DateTime.Now
-                };
-                AddSyncResult(result);
-                return result;
-            }
-        }
-
-        public async Task<SyncResult> SyncProfilesFromClientAsync(ClientRegistration client)
-        {
-            try
-            {
-                _logger.LogInformation("Bắt đầu đồng bộ từ client {ClientId} ({Address}:{Port})",
-                    client.ClientId, client.Address, client.Port);
-
-                return await SyncFromIpAsync(client.Address, client.Port);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Lỗi khi đồng bộ từ client {ClientId}", client.ClientId);
-                var result = new SyncResult
-                {
-                    ClientId = client.ClientId,
-                    Success = false,
-                    Message = $"Lỗi: {ex.Message}",
-                    Timestamp = DateTime.Now
-                };
-                AddSyncResult(result);
-                return result;
+                // Chỉ trả về 100 kết quả mới nhất để tránh quá tải bộ nhớ
+                return _syncResults.OrderByDescending(r => r.Timestamp).Take(100).ToList();
             }
         }
 
         public async Task<List<SyncResult>> SyncFromAllKnownClientsAsync()
         {
             List<SyncResult> results = new List<SyncResult>();
-            List<ClientRegistration> clients;
 
-            lock (_clientsLock)
-            {
-                clients = new List<ClientRegistration>(_registeredClients);
-            }
-
-            foreach (var client in clients)
+            foreach (var client in _knownClients.Where(c => c.IsActive))
             {
                 try
                 {
-                    var result = await SyncProfilesFromClientAsync(client);
+                    var result = await SyncFromIpAsync(client.Address, client.Port);
+                    result.ClientId = client.ClientId;
                     results.Add(result);
+                    client.LastSyncAttempt = DateTime.Now;
 
-                    lock (_clientsLock)
+                    if (result.Success)
                     {
-                        var clientToUpdate = _registeredClients.Find(c => c.ClientId == client.ClientId);
-                        if (clientToUpdate != null)
-                        {
-                            clientToUpdate.LastSyncAttempt = DateTime.Now;
-                            if (result.Success)
-                            {
-                                clientToUpdate.LastSuccessfulSync = DateTime.Now;
-                                clientToUpdate.LastSyncResults = $"Thêm {result.NewProfilesAdded} profiles";
-                                clientToUpdate.ConnectionFailureCount = 0;
-                            }
-                            else
-                            {
-                                clientToUpdate.ConnectionFailureCount++;
-                                clientToUpdate.LastSyncResults = result.Message;
-                            }
-                        }
+                        client.LastSuccessfulSync = DateTime.Now;
+                        client.ConnectionFailureCount = 0;
+                    }
+                    else
+                    {
+                        client.ConnectionFailureCount++;
                     }
                 }
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "Lỗi khi đồng bộ từ client {ClientId}", client.ClientId);
-                    var errorResult = new SyncResult
+                    results.Add(new SyncResult
                     {
                         ClientId = client.ClientId,
                         Success = false,
-                        Message = $"Lỗi: {ex.Message}",
+                        Message = ex.Message,
                         Timestamp = DateTime.Now
-                    };
-                    results.Add(errorResult);
-                    AddSyncResult(errorResult);
+                    });
+                    client.ConnectionFailureCount++;
                 }
-
-                await Task.Delay(1000);
             }
 
             return results;
         }
 
-        public async Task<List<SyncResult>> SyncFromAllClientsAsync()
+        public async Task<SyncResult> SyncFromIpAsync(string ip, int port = 61188)
         {
-            return await SyncFromAllKnownClientsAsync();
-        }
+            if (string.IsNullOrEmpty(ip))
+            {
+                throw new ArgumentException("Địa chỉ IP không được để trống", nameof(ip));
+            }
 
-        private async Task<SyncResult> ProcessSyncProfilesAsync(List<ClientProfile> clientProfiles, string clientId)
-        {
+            // Luôn sử dụng DEFAULT_SERVER cho đồng bộ
+            if (ip != DEFAULT_SERVER)
+            {
+                _logger.LogWarning($"Sử dụng địa chỉ server mặc định {DEFAULT_SERVER} thay vì {ip}");
+                ip = DEFAULT_SERVER;
+            }
+
+            var syncResult = new SyncResult
+            {
+                ClientId = ip,
+                Timestamp = DateTime.Now,
+                Success = false
+            };
+
             try
             {
-                _logger.LogInformation("Đang xử lý {Count} profiles từ client {ClientId}", clientProfiles.Count, clientId);
+                _logger.LogInformation("Bắt đầu đồng bộ từ {IP}:{Port}", ip, port);
 
-                int totalProfiles = clientProfiles.Count;
-                int newProfilesAdded = 0;
-                int filteredProfiles = 0;
-
-                var existingProfiles = await _profileService.GetAllProfilesAsync();
-                var existingAppIds = new HashSet<string>(existingProfiles.Select(p => p.AppID));
-
-                var profilesToAdd = new List<ClientProfile>();
-
-                foreach (var profile in clientProfiles)
+                using (var client = new TcpClient())
                 {
-                    if (existingAppIds.Contains(profile.AppID))
+                    // Đặt timeout để tránh chờ quá lâu
+                    var connectTask = client.ConnectAsync(ip, port);
+                    if (await Task.WhenAny(connectTask, Task.Delay(5000)) != connectTask)
                     {
-                        filteredProfiles++;
-                        continue;
+                        syncResult.Message = $"Kết nối đến {ip}:{port} bị timeout";
+                        return syncResult;
                     }
 
-                    profilesToAdd.Add(profile);
+                    if (!client.Connected)
+                    {
+                        syncResult.Message = $"Không thể kết nối đến {ip}:{port}";
+                        return syncResult;
+                    }
+
+                    // Gửi yêu cầu lấy danh sách profile
+                    await using var stream = client.GetStream();
+
+                    // Gửi lệnh AUTH + GET_PROFILES_FULL
+                    string command = $"AUTH:simple_auth_token GET_PROFILES_FULL";
+                    byte[] commandBytes = Encoding.UTF8.GetBytes(command);
+                    byte[] lengthBytes = BitConverter.GetBytes(commandBytes.Length);
+
+                    await stream.WriteAsync(lengthBytes, 0, lengthBytes.Length);
+                    await stream.WriteAsync(commandBytes, 0, commandBytes.Length);
+                    await stream.FlushAsync();
+
+                    // Đọc phản hồi
+                    byte[] responseHeaderBuffer = new byte[4];
+                    int bytesRead = await stream.ReadAsync(responseHeaderBuffer, 0, 4);
+
+                    if (bytesRead < 4)
+                    {
+                        syncResult.Message = "Không đọc được phản hồi từ server";
+                        return syncResult;
+                    }
+
+                    int responseLength = BitConverter.ToInt32(responseHeaderBuffer, 0);
+                    if (responseLength <= 0 || responseLength > 10 * 1024 * 1024) // Giới hạn 10MB
+                    {
+                        syncResult.Message = $"Độ dài phản hồi không hợp lệ: {responseLength}";
+                        return syncResult;
+                    }
+
+                    byte[] responseBuffer = new byte[responseLength];
+                    bytesRead = await stream.ReadAsync(responseBuffer, 0, responseLength);
+
+                    if (bytesRead < responseLength)
+                    {
+                        syncResult.Message = "Phản hồi không đầy đủ từ server";
+                        return syncResult;
+                    }
+
+                    string response = Encoding.UTF8.GetString(responseBuffer, 0, bytesRead);
+
+                    if (response == "NO_PROFILES")
+                    {
+                        syncResult.Success = true;
+                        syncResult.Message = "Server báo không có profiles";
+                        return syncResult;
+                    }
+
+                    // Chuyển đổi JSON sang danh sách profiles
+                    var clientProfiles = JsonSerializer.Deserialize<List<SteamCmdWebAPI.Models.SteamCmdProfile>>(response);
+
+                    if (clientProfiles == null || !clientProfiles.Any())
+                    {
+                        syncResult.Success = true;
+                        syncResult.Message = "Không có profiles từ client";
+                        return syncResult;
+                    }
+
+                    syncResult.TotalProfiles = clientProfiles.Count;
+
+                    // Xử lý đồng bộ
+                    var existingProfiles = await _profileService.GetAllProfilesAsync();
+                    var existingAppIds = existingProfiles.Select(p => p.AppID).ToHashSet();
+
+                    int added = 0;
+                    int filtered = 0;
+
+                    foreach (var clientProfile in clientProfiles)
+                    {
+                        // Chỉ lấy các profile có AppID chưa tồn tại
+                        if (!existingAppIds.Contains(clientProfile.AppID))
+                        {
+                            // Chuyển đổi từ SteamCmdProfile sang ClientProfile
+                            var newProfile = new ClientProfile
+                            {
+                                Name = clientProfile.Name,
+                                AppID = clientProfile.AppID,
+                                InstallDirectory = clientProfile.InstallDirectory,
+                                SteamUsername = clientProfile.SteamUsername,
+                                SteamPassword = clientProfile.SteamPassword,
+                                Arguments = clientProfile.Arguments,
+                                ValidateFiles = clientProfile.ValidateFiles,
+                                AutoRun = clientProfile.AutoRun,
+                                AnonymousLogin = clientProfile.AnonymousLogin,
+                                Status = "Ready",
+                                StartTime = DateTime.Now,
+                                StopTime = DateTime.Now,
+                                LastRun = DateTime.UtcNow
+                            };
+
+                            await _profileService.AddProfileAsync(newProfile);
+                            existingAppIds.Add(clientProfile.AppID); // Cập nhật để không thêm trùng
+                            added++;
+                        }
+                        else
+                        {
+                            filtered++;
+                        }
+                    }
+
+                    syncResult.Success = true;
+                    syncResult.NewProfilesAdded = added;
+                    syncResult.FilteredProfiles = filtered;
+                    syncResult.Message = $"Đồng bộ thành công. Đã thêm {added} profiles mới, bỏ qua {filtered} profiles đã tồn tại.";
+
+                    _logger.LogInformation("Đồng bộ thành công từ {IP}:{Port}. Thêm: {Added}, Bỏ qua: {Filtered}",
+                        ip, port, added, filtered);
                 }
-
-                foreach (var profile in profilesToAdd)
-                {
-                    await _profileService.AddProfileAsync(profile);
-                    newProfilesAdded++;
-                }
-
-                var result = new SyncResult
-                {
-                    ClientId = clientId,
-                    Success = true,
-                    Message = $"Đồng bộ thành công. Đã thêm {newProfilesAdded} profiles mới.",
-                    TotalProfiles = totalProfiles,
-                    NewProfilesAdded = newProfilesAdded,
-                    FilteredProfiles = filteredProfiles,
-                    Timestamp = DateTime.Now
-                };
-
-                AddSyncResult(result);
-                return result;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Lỗi khi xử lý đồng bộ profiles từ client {ClientId}", clientId);
-                var result = new SyncResult
-                {
-                    ClientId = clientId,
-                    Success = false,
-                    Message = $"Lỗi: {ex.Message}",
-                    TotalProfiles = clientProfiles.Count,
-                    Timestamp = DateTime.Now
-                };
-                AddSyncResult(result);
-                return result;
+                _logger.LogError(ex, "Lỗi khi đồng bộ từ {IP}:{Port}", ip, port);
+                syncResult.Message = $"Lỗi: {ex.Message}";
             }
+
+            // Lưu kết quả đồng bộ
+            lock (_syncLock)
+            {
+                _syncResults.Add(syncResult);
+                if (_syncResults.Count > 1000) // Giới hạn số lượng kết quả lưu trữ
+                {
+                    _syncResults.RemoveAt(0);
+                }
+            }
+
+            return syncResult;
         }
 
         public async Task DiscoverAndSyncClientsAsync()
         {
-            try
-            {
-                _logger.LogInformation("Bắt đầu khám phá và đồng bộ với client từ xa");
+            _logger.LogInformation("Bắt đầu tìm kiếm client SteamCmdWebAPI trên mạng");
 
-                await DiscoverFromCentralServiceAsync();
-                await TryConnectToKnownServersAsync();
-                await SyncFromRegisteredClientsAsync();
-
-                _logger.LogInformation("Hoàn thành khám phá và đồng bộ client từ xa");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Lỗi khi khám phá và đồng bộ client từ xa");
-            }
-        }
-
-        private async Task DiscoverFromCentralServiceAsync()
-        {
-            try
-            {
-                string discoveryServiceUrl = "https://discovery.steamcmdweb.example.com/api/clients";
-
-                using var response = await _httpClient.GetAsync(discoveryServiceUrl);
-                if (!response.IsSuccessStatusCode)
-                {
-                    _logger.LogWarning("Không thể kết nối với dịch vụ discovery trung tâm: {StatusCode}", response.StatusCode);
-                    return;
-                }
-
-                var content = await response.Content.ReadAsStringAsync();
-                var clients = JsonSerializer.Deserialize<List<ClientRegistration>>(content, new JsonSerializerOptions
-                {
-                    PropertyNameCaseInsensitive = true
-                });
-
-                if (clients == null || !clients.Any())
-                {
-                    _logger.LogInformation("Không tìm thấy client nào từ dịch vụ discovery trung tâm");
-                    return;
-                }
-
-                _logger.LogInformation("Tìm thấy {Count} client từ dịch vụ discovery trung tâm", clients.Count);
-
-                foreach (var client in clients)
-                {
-                    try
-                    {
-                        RegisterClient(client);
-                        await SyncProfilesFromClientAsync(client);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "Lỗi khi đồng bộ với client {ClientId} từ dịch vụ discovery", client.ClientId);
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Lỗi khi tìm kiếm client từ dịch vụ discovery trung tâm");
-            }
-        }
-
-        private async Task TryConnectToKnownServersAsync()
-        {
-            var knownServers = new List<(string Address, int Port)>
-            {
-                ("idckz.ddnsfree.com", 61188),
-            };
-
-            foreach (var server in knownServers)
-            {
-                try
-                {
-                    _logger.LogInformation("Đang thử kết nối với máy chủ đã biết: {Address}:{Port}", server.Address, server.Port);
-
-                    bool isReachable = await IsHostReachableAsync(server.Address);
-                    if (!isReachable)
-                    {
-                        _logger.LogWarning("Máy chủ {Address} không phản hồi", server.Address);
-                        continue;
-                    }
-
-                    var result = await SyncFromIpAsync(server.Address, server.Port);
-                    if (result.Success)
-                    {
-                        _logger.LogInformation("Đồng bộ thành công với máy chủ {Address}:{Port}", server.Address, server.Port);
-
-                        RegisterClient(new ClientRegistration
-                        {
-                            ClientId = $"{server.Address}:{server.Port}",
-                            Address = server.Address,
-                            Port = server.Port,
-                            Description = $"Máy chủ đã biết, kết nối thành công vào {DateTime.Now}",
-                            RegisteredAt = DateTime.Now,
-                            LastSuccessfulSync = DateTime.Now,
-                            LastSyncAttempt = DateTime.Now,
-                            LastSyncResults = $"Đã thêm {result.NewProfilesAdded} profiles",
-                            IsActive = true
-                        });
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Lỗi khi kết nối với máy chủ đã biết: {Address}:{Port}", server.Address, server.Port);
-                }
-            }
-        }
-
-        private async Task<bool> IsHostReachableAsync(string hostNameOrAddress)
-        {
-            try
-            {
-                using var ping = new Ping();
-                var reply = await ping.SendPingAsync(hostNameOrAddress, 3000);
-                return reply.Status == IPStatus.Success;
-            }
-            catch
-            {
-                try
-                {
-                    using var client = new TcpClient();
-                    var connectTask = client.ConnectAsync(hostNameOrAddress, 61188);
-                    if (await Task.WhenAny(connectTask, Task.Delay(3000)) == connectTask)
-                    {
-                        return client.Connected;
-                    }
-                    return false;
-                }
-                catch
-                {
-                    return false;
-                }
-            }
-        }
-
-        private async Task SyncFromRegisteredClientsAsync()
-        {
-            List<ClientRegistration> clients;
-
-            lock (_clientsLock)
-            {
-                clients = new List<ClientRegistration>(_registeredClients);
-            }
-
-            _logger.LogInformation("Đồng bộ với {Count} client đã đăng ký trước đó", clients.Count);
-
-            foreach (var client in clients)
-            {
-                try
-                {
-                    var result = await SyncProfilesFromClientAsync(client);
-
-                    lock (_clientsLock)
-                    {
-                        var existingClient = _registeredClients.FirstOrDefault(c => c.ClientId == client.ClientId);
-                        if (existingClient != null)
-                        {
-                            existingClient.LastSyncAttempt = DateTime.Now;
-                            if (result.Success)
-                            {
-                                existingClient.LastSuccessfulSync = DateTime.Now;
-                                existingClient.LastSyncResults = $"Thêm {result.NewProfilesAdded} profiles";
-                                existingClient.ConnectionFailureCount = 0;
-                            }
-                            else
-                            {
-                                existingClient.ConnectionFailureCount++;
-                                existingClient.LastSyncResults = result.Message;
-                            }
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Lỗi khi đồng bộ với client {ClientId}", client.ClientId);
-                }
-            }
+            // Sử dụng địa chỉ mặc định
+            await SyncFromIpAsync(DEFAULT_SERVER, DEFAULT_PORT);
         }
 
         public async Task ScanLocalNetworkAsync()
         {
-            await DiscoverAndSyncClientsAsync();
-        }
-
-        private IEnumerable<string> GetLocalIpAddresses()
-        {
-            try
-            {
-                _logger.LogInformation("Bắt đầu quét mạng cục bộ để tìm client");
-                var localIps = new List<string>();
-                var hostEntry = Dns.GetHostEntry(Dns.GetHostName());
-                foreach (var address in hostEntry.AddressList)
-                {
-                    if (address.AddressFamily == AddressFamily.InterNetwork)
-                    {
-                        localIps.Add(address.ToString());
-                    }
-                }
-                return localIps;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Lỗi khi lấy địa chỉ IP cục bộ");
-                return Enumerable.Empty<string>();
-            }
+            await DiscoverAndSyncClientsAsync(); // Đơn giản hóa bằng cách gọi đến phương thức khám phá
         }
     }
 }
