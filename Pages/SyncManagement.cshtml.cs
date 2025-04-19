@@ -6,7 +6,6 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.Logging;
 using SteamCmdWeb.Services;
 using SteamCmdWeb.Models;
-using System.Net;
 using System.Linq;
 
 namespace SteamCmdWeb.Pages
@@ -44,35 +43,6 @@ namespace SteamCmdWeb.Pages
                 _logger.LogError(ex, "Lỗi khi tải trang quản lý đồng bộ");
                 StatusMessage = "Đã xảy ra lỗi khi tải trang: " + ex.Message;
                 IsSuccess = false;
-            }
-        }
-
-        public async Task<IActionResult> OnPostSyncIpAsync(string ip, int port = 61188)
-        {
-            try
-            {
-                if (string.IsNullOrEmpty(ip))
-                {
-                    StatusMessage = "Địa chỉ IP không được để trống";
-                    IsSuccess = false;
-                    return RedirectToPage();
-                }
-
-                var result = await _syncService.SyncFromIpAsync(ip, port);
-
-                StatusMessage = result.Success
-                    ? $"Đồng bộ thành công từ {ip}:{port}. Đã thêm {result.NewProfilesAdded} profiles mới."
-                    : $"Lỗi khi đồng bộ từ {ip}:{port}: {result.Message}";
-                IsSuccess = result.Success;
-
-                return RedirectToPage();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Lỗi khi đồng bộ từ IP {IP}:{Port}", ip, port);
-                StatusMessage = "Đã xảy ra lỗi khi đồng bộ: " + ex.Message;
-                IsSuccess = false;
-                return RedirectToPage();
             }
         }
 

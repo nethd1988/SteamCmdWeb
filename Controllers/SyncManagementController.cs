@@ -67,7 +67,8 @@ namespace SteamCmdWeb.Controllers
         {
             try
             {
-                await _syncService.ScanLocalNetworkAsync();
+                // Sửa từ ScanLocalNetworkAsync thành DiscoverAndSyncClientsAsync
+                await _syncService.DiscoverAndSyncClientsAsync();
                 return Ok(new { success = true, message = "Đã quét mạng và đồng bộ với các client tìm thấy" });
             }
             catch (Exception ex)
