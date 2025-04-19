@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -17,303 +16,276 @@ namespace SteamCmdWeb.Services
     public class TcpServerService : BackgroundService
     {
         private readonly ILogger<TcpServerService> _logger;
-        private readonly ProfileService _profileService;
-        private readonly DecryptionService _decryptionService;
         private readonly SyncService _syncService;
+        private readonly int _port = 61188;
         private TcpListener _listener;
-        private const int ServerPort = 61188;
-        private const string AuthToken = "simple_auth_token";
-        private bool _isRunning = true;
+        private readonly DecryptionService _decryptionService;
 
         public TcpServerService(
             ILogger<TcpServerService> logger,
-            ProfileService profileService,
-            DecryptionService decryptionService,
-            SyncService syncService)
+            SyncService syncService,
+            DecryptionService decryptionService)
         {
             _logger = logger;
-            _profileService = profileService;
-            _decryptionService = decryptionService;
             _syncService = syncService;
+            _decryptionService = decryptionService;
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             try
             {
-                // Khởi tạo TcpListener trên port 61188
-                _listener = new TcpListener(IPAddress.Any, ServerPort);
+                _listener = new TcpListener(IPAddress.Any, _port);
                 _listener.Start();
-                _logger.LogInformation("Server TCP đang lắng nghe trên port {Port}", ServerPort);
+                _logger.LogInformation("TcpServerService[0] đã khởi động trên port {Port}", _port);
 
-                while (!stoppingToken.IsCancellationRequested && _isRunning)
+                while (!stoppingToken.IsCancellationRequested)
                 {
                     try
                     {
-                        // Chờ kết nối từ client với timeout
-                        using var timeoutCts = new CancellationTokenSource();
-                        var connectTask = _listener.AcceptTcpClientAsync();
-                        var combinedCts = CancellationTokenSource.CreateLinkedTokenSource(timeoutCts.Token, stoppingToken);
-
-                        // Đợi kết nối với timeout 5 giây
-                        var timeoutTask = Task.Delay(5000, combinedCts.Token);
-                        var completedTask = await Task.WhenAny(connectTask, timeoutTask);
-
-                        if (completedTask == timeoutTask)
-                        {
-                            continue;
-                        }
-
-                        var client = await connectTask;
+                        var client = await _listener.AcceptTcpClientAsync();
                         string clientIp = ((IPEndPoint)client.Client.RemoteEndPoint).Address.ToString();
-                        _logger.LogInformation("Nhận kết nối từ {ClientIp}", clientIp);
+                        _logger.LogInformation("TcpServerService[0] nhận kết nối từ {ClientIp}", clientIp);
 
-                        // Xử lý client trên thread riêng để không chặn main thread
-                        _ = Task.Run(() => HandleClientAsync(client, clientIp, stoppingToken), stoppingToken);
+                        _ = Task.Run(() => HandleClientAsync(client, clientIp), stoppingToken);
                     }
-                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    catch (Exception ex) when (!stoppingToken.IsCancellationRequested)
                     {
-                        _logger.LogError(ex, "Lỗi khi chờ kết nối client");
-                        await Task.Delay(1000, stoppingToken);
+                        _logger.LogError(ex, "TcpServerService[0] lỗi khi xử lý yêu cầu kết nối");
                     }
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Lỗi không xử lý được trong TCP Server Service");
+                _logger.LogError(ex, "TcpServerService[0] lỗi khi khởi động");
             }
             finally
             {
                 _listener?.Stop();
-                _logger.LogInformation("Server TCP đã dừng");
+                _logger.LogInformation("TcpServerService[0] đã dừng");
             }
         }
 
-        private async Task HandleClientAsync(TcpClient client, string clientIp, CancellationToken stoppingToken)
+        private async Task HandleClientAsync(TcpClient client, string clientIp)
         {
             try
             {
                 using (client)
                 {
-                    NetworkStream stream = client.GetStream();
-                    stream.ReadTimeout = 30000; // 30 giây
-                    stream.WriteTimeout = 30000; // 30 giây
+                    var stream = client.GetStream();
 
-                    // Đọc dữ liệu từ client
+                    // Đọc độ dài thông điệp
                     byte[] lengthBuffer = new byte[4];
-                    int bytesRead = await stream.ReadAsync(lengthBuffer, 0, 4, stoppingToken);
-                    if (bytesRead < 4)
+                    int bytesRead = await stream.ReadAsync(lengthBuffer, 0, lengthBuffer.Length);
+                    if (bytesRead != 4)
                     {
-                        _logger.LogWarning("Nhận dữ liệu không đầy đủ từ {ClientIp}", clientIp);
+                        _logger.LogWarning("TcpServerService[0] nhận dữ liệu không đầy đủ từ {ClientIp}", clientIp);
                         return;
                     }
 
-                    int dataLength = BitConverter.ToInt32(lengthBuffer, 0);
-                    if (dataLength <= 0 || dataLength > 1024 * 1024) // Giới hạn 1MB
+                    int messageLength = BitConverter.ToInt32(lengthBuffer, 0);
+                    _logger.LogInformation("TcpServerService[0] nhận dữ liệu dài: {Length} từ {ClientIp}", messageLength, clientIp);
+
+                    // Đọc thông điệp
+                    byte[] messageBuffer = new byte[messageLength];
+                    bytesRead = await stream.ReadAsync(messageBuffer, 0, messageLength);
+                    if (bytesRead != messageLength)
                     {
-                        _logger.LogWarning("Độ dài dữ liệu không hợp lý từ {ClientIp}: {Length}", clientIp, dataLength);
+                        _logger.LogWarning("TcpServerService[0] dữ liệu đọc {BytesRead} không khớp với chiều dài {MessageLength}", bytesRead, messageLength);
                         return;
                     }
 
-                    byte[] dataBuffer = new byte[dataLength];
-                    bytesRead = await stream.ReadAsync(dataBuffer, 0, dataLength, stoppingToken);
-                    if (bytesRead < dataLength)
+                    string message = Encoding.UTF8.GetString(messageBuffer);
+                    _logger.LogInformation("TcpServerService[0] nhận thông điệp: {Message} từ {ClientIp}", message, clientIp);
+
+                    // Xử lý lệnh
+                    if (message.StartsWith("AUTH:"))
                     {
-                        _logger.LogWarning("Nhận dữ liệu không đầy đủ từ {ClientIp}", clientIp);
-                        return;
-                    }
-
-                    string command = Encoding.UTF8.GetString(dataBuffer);
-                    _logger.LogInformation("Nhận lệnh từ {ClientIp}: {Command}", clientIp, command);
-
-                    // Kiểm tra lệnh và xử lý
-                    if (command.StartsWith("AUTH:"))
-                    {
-                        string[] parts = command.Split(' ', 2);
-                        string authPart = parts[0];
-                        string commandPart = parts.Length > 1 ? parts[1] : string.Empty;
-
-                        string[] authParts = authPart.Split(':', 2);
-                        string token = authParts.Length > 1 ? authParts[1] : string.Empty;
-
-                        if (token != AuthToken)
-                        {
-                            _logger.LogWarning("Token không hợp lệ từ {ClientIp}: {Token}", clientIp, token);
-                            await SendResponseAsync(stream, "ERROR:INVALID_TOKEN", stoppingToken);
-                            return;
-                        }
-
-                        await ProcessCommandAsync(stream, commandPart, clientIp, stoppingToken);
+                        await ProcessAuthenticatedCommand(message, stream, clientIp);
                     }
                     else
                     {
-                        _logger.LogWarning("Lệnh không hợp lệ từ {ClientIp}: {Command}", clientIp, command);
-                        await SendResponseAsync(stream, "ERROR:UNKNOWN_COMMAND", stoppingToken);
+                        _logger.LogWarning("TcpServerService[0] nhận lệnh không xác thực từ {ClientIp}: {Message}", clientIp, message);
+                        await SendResponse(stream, "ERROR: Authentication required");
                     }
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Lỗi khi xử lý client {ClientIp}: {Message}", clientIp, ex.Message);
+                _logger.LogError(ex, "TcpServerService[0] lỗi khi xử lý client từ {ClientIp}", clientIp);
             }
         }
 
-        private async Task ProcessCommandAsync(NetworkStream stream, string command, string clientIp, CancellationToken stoppingToken)
+        private async Task ProcessAuthenticatedCommand(string command, NetworkStream stream, string clientIp)
+        {
+            // Phân tích lệnh
+            string[] parts = command.Split(' ');
+            if (parts.Length < 2)
+            {
+                _logger.LogWarning("TcpServerService[0] lệnh không hợp lệ từ {ClientIp}: {Command}", clientIp, command);
+                await SendResponse(stream, "ERROR: Invalid command format");
+                return;
+            }
+
+            string authPart = parts[0]; // AUTH:token
+            string action = parts[1];   // GET_PROFILES, GET_PROFILE_DETAILS, SEND_PROFILE, SEND_PROFILES, etc.
+
+            // Kiểm tra xác thực
+            string[] authParts = authPart.Split(':');
+            if (authParts.Length != 2 || authParts[0] != "AUTH")
+            {
+                _logger.LogWarning("TcpServerService[0] định dạng xác thực không hợp lệ từ {ClientIp}: {AuthPart}", clientIp, authPart);
+                await SendResponse(stream, "ERROR: Invalid authentication format");
+                return;
+            }
+
+            string token = authParts[1];
+            if (token != "simple_auth_token")
+            {
+                _logger.LogWarning("TcpServerService[0] token không hợp lệ từ {ClientIp}: {Token}", clientIp, token);
+                await SendResponse(stream, "ERROR: Invalid authentication token");
+                return;
+            }
+
+            _logger.LogInformation("TcpServerService[0] nhận lệnh: {Action} từ {ClientIp}", action, clientIp);
+
+            // Xử lý lệnh dựa trên action
+            switch (action)
+            {
+                case "GET_PROFILES":
+                    await ProcessGetProfilesCommand(stream, clientIp);
+                    break;
+                case "GET_PROFILE_DETAILS":
+                    if (parts.Length < 3)
+                    {
+                        await SendResponse(stream, "ERROR: Missing profile name");
+                    }
+                    else
+                    {
+                        string profileName = parts[2];
+                        await ProcessGetProfileDetailsCommand(profileName, stream, clientIp);
+                    }
+                    break;
+                case "SEND_PROFILE":
+                    await ProcessSendProfileCommand(stream, clientIp);
+                    break;
+                case "SEND_PROFILES":
+                    await ProcessSendProfilesCommand(stream, clientIp);
+                    break;
+                default:
+                    _logger.LogWarning("TcpServerService[0] lệnh không được hỗ trợ từ {ClientIp}: {Action}", clientIp, action);
+                    await SendResponse(stream, $"ERROR: Unsupported command {action}");
+                    break;
+            }
+        }
+
+        private async Task ProcessGetProfilesCommand(NetworkStream stream, string clientIp)
         {
             try
             {
-                _logger.LogInformation("Xử lý lệnh {Command} từ {ClientIp}", command, clientIp);
-
-                switch (command)
+                // Lấy danh sách profiles từ SyncService
+                var profiles = _syncService.GetAllProfiles();
+                if (profiles == null || profiles.Count == 0)
                 {
-                    case "GET_PROFILES":
-                        await HandleGetProfilesAsync(stream, clientIp, stoppingToken);
-                        break;
-
-                    case var cmd when cmd.StartsWith("GET_PROFILE_DETAILS "):
-                        string profileName = cmd.Substring("GET_PROFILE_DETAILS ".Length).Trim();
-                        await HandleGetProfileDetailsAsync(stream, profileName, clientIp, stoppingToken);
-                        break;
-
-                    case "SEND_PROFILE":
-                        await HandleSendProfileAsync(stream, clientIp, stoppingToken);
-                        break;
-
-                    case "SEND_PROFILES":
-                        await HandleSendProfilesAsync(stream, clientIp, stoppingToken);
-                        break;
-
-                    default:
-                        _logger.LogWarning("Lệnh không xác định từ {ClientIp}: {Command}", clientIp, command);
-                        await SendResponseAsync(stream, "ERROR:UNKNOWN_COMMAND", stoppingToken);
-                        break;
+                    _logger.LogInformation("TcpServerService[0] không có profiles để gửi cho {ClientIp}", clientIp);
+                    await SendResponse(stream, "NO_PROFILES");
+                    return;
                 }
+
+                // Tạo danh sách tên profiles
+                var profileNames = new List<string>();
+                foreach (var profile in profiles)
+                {
+                    profileNames.Add(profile.Name);
+                }
+
+                // Gửi danh sách tên profiles
+                string response = string.Join(",", profileNames);
+                _logger.LogInformation("TcpServerService[0] gửi {Count} tên profiles tới {ClientIp}", profileNames.Count, clientIp);
+                await SendResponse(stream, response);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Lỗi khi xử lý lệnh {Command} từ {ClientIp}: {Message}", command, clientIp, ex.Message);
-                await SendResponseAsync(stream, $"ERROR:{ex.Message}", stoppingToken);
+                _logger.LogError(ex, "TcpServerService[0] lỗi khi xử lý lệnh GET_PROFILES từ {ClientIp}", clientIp);
+                await SendResponse(stream, "ERROR: " + ex.Message);
             }
         }
 
-        private async Task HandleGetProfilesAsync(NetworkStream stream, string clientIp, CancellationToken stoppingToken)
-        {
-            var profiles = await _profileService.GetAllProfilesAsync();
-            if (profiles.Count == 0)
-            {
-                await SendResponseAsync(stream, "NO_PROFILES", stoppingToken);
-                return;
-            }
-
-            var profileNames = profiles.Select(p => p.Name);
-            string response = string.Join(",", profileNames);
-            await SendResponseAsync(stream, response, stoppingToken);
-            _logger.LogInformation("Đã gửi danh sách {Count} profiles cho {ClientIp}", profiles.Count, clientIp);
-        }
-
-        private async Task HandleGetProfileDetailsAsync(NetworkStream stream, string profileName, string clientIp, CancellationToken stoppingToken)
-        {
-            if (string.IsNullOrEmpty(profileName))
-            {
-                await SendResponseAsync(stream, "ERROR:PROFILE_NAME_REQUIRED", stoppingToken);
-                return;
-            }
-
-            var profiles = await _profileService.GetAllProfilesAsync();
-            var profile = profiles.FirstOrDefault(p => p.Name.Equals(profileName, StringComparison.OrdinalIgnoreCase));
-
-            if (profile == null)
-            {
-                await SendResponseAsync(stream, "PROFILE_NOT_FOUND", stoppingToken);
-                return;
-            }
-
-            // Chuyển đổi ClientProfile sang SteamCmdProfile để đảm bảo tương thích
-            var steamCmdProfile = new SteamCmdWebAPI.Models.SteamCmdProfile
-            {
-                Id = profile.Id,
-                Name = profile.Name,
-                AppID = profile.AppID,
-                InstallDirectory = profile.InstallDirectory,
-                SteamUsername = profile.SteamUsername,
-                SteamPassword = profile.SteamPassword,
-                Arguments = profile.Arguments,
-                ValidateFiles = profile.ValidateFiles,
-                AutoRun = profile.AutoRun,
-                AnonymousLogin = profile.AnonymousLogin,
-                Status = profile.Status,
-                StartTime = profile.StartTime,
-                StopTime = profile.StopTime,
-                Pid = profile.Pid,
-                LastRun = profile.LastRun
-            };
-
-            string json = JsonSerializer.Serialize(steamCmdProfile);
-            await SendResponseAsync(stream, json, stoppingToken);
-            _logger.LogInformation("Đã gửi thông tin profile {ProfileName} cho {ClientIp}", profileName, clientIp);
-        }
-
-        private async Task HandleSendProfileAsync(NetworkStream stream, string clientIp, CancellationToken stoppingToken)
+        private async Task ProcessGetProfileDetailsCommand(string profileName, NetworkStream stream, string clientIp)
         {
             try
             {
-                // Gửi phản hồi sẵn sàng nhận
-                await SendResponseAsync(stream, "READY_TO_RECEIVE", stoppingToken);
-                _logger.LogInformation("Đã gửi READY_TO_RECEIVE cho {ClientIp}", clientIp);
+                // Lấy chi tiết profile từ SyncService
+                var profile = _syncService.GetProfileByName(profileName);
+                if (profile == null)
+                {
+                    _logger.LogWarning("TcpServerService[0] không tìm thấy profile {ProfileName} cho {ClientIp}", profileName, clientIp);
+                    await SendResponse(stream, "PROFILE_NOT_FOUND");
+                    return;
+                }
+
+                // Chuyển đổi từ ClientProfile sang SteamCmdProfile
+                var steamCmdProfile = new SteamCmdWebAPI.Models.SteamCmdProfile
+                {
+                    Name = profile.Name,
+                    AppID = profile.AppID,
+                    InstallDirectory = profile.InstallDirectory,
+                    Arguments = profile.Arguments,
+                    ValidateFiles = profile.ValidateFiles,
+                    AutoRun = profile.AutoRun,
+                    AnonymousLogin = profile.AnonymousLogin,
+                    Status = profile.Status,
+                    StartTime = profile.StartTime,
+                    StopTime = profile.StopTime,
+                    LastRun = profile.LastRun
+                };
+
+                // Gửi chi tiết profile
+                string response = JsonSerializer.Serialize(steamCmdProfile);
+                _logger.LogInformation("TcpServerService[0] gửi chi tiết profile {ProfileName} tới {ClientIp}", profileName, clientIp);
+                await SendResponse(stream, response);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "TcpServerService[0] lỗi khi xử lý lệnh GET_PROFILE_DETAILS từ {ClientIp}", clientIp);
+                await SendResponse(stream, "ERROR: " + ex.Message);
+            }
+        }
+
+        private async Task ProcessSendProfileCommand(NetworkStream stream, string clientIp)
+        {
+            try
+            {
+                _logger.LogInformation("TcpServerService[0] chuẩn bị nhận profile từ {ClientIp}", clientIp);
+                await SendResponse(stream, "READY_TO_RECEIVE");
 
                 // Đọc độ dài profile
                 byte[] lengthBuffer = new byte[4];
-                int bytesRead = await stream.ReadAsync(lengthBuffer, 0, 4, stoppingToken);
-                if (bytesRead < 4)
+                int bytesRead = await stream.ReadAsync(lengthBuffer, 0, lengthBuffer.Length);
+                if (bytesRead != 4)
                 {
-                    _logger.LogWarning("Nhận dữ liệu độ dài không đầy đủ từ {ClientIp}", clientIp);
-                    await SendResponseAsync(stream, "ERROR:INVALID_LENGTH", stoppingToken);
+                    _logger.LogWarning("TcpServerService[0] nhận dữ liệu không đầy đủ từ {ClientIp}", clientIp);
                     return;
                 }
 
-                int dataLength = BitConverter.ToInt32(lengthBuffer, 0);
-                _logger.LogInformation("Nhận dữ liệu độ dài: {Length} từ {ClientIp}", dataLength, clientIp);
-
-                if (dataLength <= 0 || dataLength > 5 * 1024 * 1024) // Giới hạn 5MB
-                {
-                    _logger.LogWarning("Độ dài dữ liệu profile không hợp lý từ {ClientIp}: {Length}", clientIp, dataLength);
-                    await SendResponseAsync(stream, "ERROR:INVALID_DATA_LENGTH", stoppingToken);
-                    return;
-                }
+                int profileLength = BitConverter.ToInt32(lengthBuffer, 0);
+                _logger.LogInformation("TcpServerService[0] nhận dữ liệu dài: {Length} từ {ClientIp}", profileLength, clientIp);
 
                 // Đọc nội dung profile
-                byte[] dataBuffer = new byte[dataLength];
-                bytesRead = await stream.ReadAsync(dataBuffer, 0, dataLength, stoppingToken);
-                if (bytesRead < dataLength)
+                byte[] profileBuffer = new byte[profileLength];
+                bytesRead = await stream.ReadAsync(profileBuffer, 0, profileLength);
+                if (bytesRead != profileLength)
                 {
-                    _logger.LogWarning("Nhận dữ liệu profile không đầy đủ từ {ClientIp}: nhận {Received}/{Expected} bytes",
-                        clientIp, bytesRead, dataLength);
-                    await SendResponseAsync(stream, "ERROR:INCOMPLETE_DATA", stoppingToken);
+                    _logger.LogWarning("TcpServerService[0] dữ liệu đọc {BytesRead} không khớp với chiều dài {ProfileLength}", bytesRead, profileLength);
+                    await SendResponse(stream, "ERROR: Incomplete profile data");
                     return;
                 }
 
-                string json = Encoding.UTF8.GetString(dataBuffer);
-                _logger.LogInformation("Nhận dữ liệu JSON từ {ClientIp}: {JsonLength} bytes", clientIp, json.Length);
+                string profileJson = Encoding.UTF8.GetString(profileBuffer);
+                _logger.LogInformation("TcpServerService[0] nhận dữ liệu JSON từ {ClientIp}: {Length} bytes", clientIp, profileJson.Length);
 
-                // Deserialize JSON
-                SteamCmdWebAPI.Models.SteamCmdProfile steamCmdProfile;
-                try
-                {
-                    steamCmdProfile = JsonSerializer.Deserialize<SteamCmdWebAPI.Models.SteamCmdProfile>(json);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Lỗi khi chuyển đổi dữ liệu JSON từ {ClientIp}: {Message}", clientIp, ex.Message);
-                    await SendResponseAsync(stream, "ERROR:INVALID_JSON", stoppingToken);
-                    return;
-                }
-
-                if (steamCmdProfile == null)
-                {
-                    _logger.LogWarning("Profile không hợp lệ từ {ClientIp}", clientIp);
-                    await SendResponseAsync(stream, "ERROR:INVALID_PROFILE", stoppingToken);
-                    return;
-                }
+                // Chuyển đổi dữ liệu JSON thành đối tượng profile
+                var steamCmdProfile = JsonSerializer.Deserialize<SteamCmdWebAPI.Models.SteamCmdProfile>(profileJson);
 
                 // Chuyển đổi sang ClientProfile
                 var clientProfile = new ClientProfile
@@ -330,88 +302,70 @@ namespace SteamCmdWeb.Services
                     Status = "Ready",
                     StartTime = DateTime.Now,
                     StopTime = DateTime.Now,
-                    LastRun = DateTime.UtcNow
+                    LastRun = DateTime.UtcNow,
+                    Pid = 0
                 };
 
                 // Thêm vào danh sách chờ xác nhận
-                _syncService.GetPendingProfiles().Add(clientProfile);
-                _logger.LogInformation("Đã thêm profile {ProfileName} từ {ClientIp} vào danh sách chờ",
-                    clientProfile.Name, clientIp);
+                _logger.LogInformation("TcpServerService[0] đã thêm profile {ProfileName} từ {ClientIp} vào danh sách chờ", steamCmdProfile.Name, clientIp);
+                _syncService.AddPendingProfile(clientProfile);
 
-                await SendResponseAsync(stream, $"SUCCESS:ADDED_TO_PENDING", stoppingToken);
+                await SendResponse(stream, $"SUCCESS: Profile {steamCmdProfile.Name} added to pending list");
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Lỗi khi xử lý nhận profile từ {ClientIp}: {Message}", clientIp, ex.Message);
-                await SendResponseAsync(stream, $"ERROR:{ex.Message}", stoppingToken);
+                _logger.LogError(ex, "TcpServerService[0] lỗi khi xử lý lệnh SEND_PROFILE từ {ClientIp}", clientIp);
+                await SendResponse(stream, "ERROR: " + ex.Message);
             }
         }
 
-        private async Task HandleSendProfilesAsync(NetworkStream stream, string clientIp, CancellationToken stoppingToken)
+        private async Task ProcessSendProfilesCommand(NetworkStream stream, string clientIp)
         {
             try
             {
-                int processedCount = 0;
+                _logger.LogInformation("TcpServerService[0] chuẩn bị nhận nhiều profiles từ {ClientIp}", clientIp);
+                await SendResponse(stream, "READY_TO_RECEIVE");
+
+                int profileCount = 0;
                 int errorCount = 0;
 
-                // Gửi phản hồi sẵn sàng nhận
-                await SendResponseAsync(stream, "READY_TO_RECEIVE", stoppingToken);
-                _logger.LogInformation("Đã gửi READY_TO_RECEIVE cho {ClientIp} để nhận nhiều profiles", clientIp);
-
-                while (!stoppingToken.IsCancellationRequested)
+                while (true)
                 {
                     // Đọc độ dài profile
                     byte[] lengthBuffer = new byte[4];
-                    int bytesRead = await stream.ReadAsync(lengthBuffer, 0, 4, stoppingToken);
-                    if (bytesRead < 4)
+                    int bytesRead = await stream.ReadAsync(lengthBuffer, 0, lengthBuffer.Length);
+                    if (bytesRead != 4)
                     {
-                        _logger.LogWarning("Nhận dữ liệu độ dài không đầy đủ từ {ClientIp}", clientIp);
-                        errorCount++;
+                        _logger.LogWarning("TcpServerService[0] nhận dữ liệu không đầy đủ từ {ClientIp}", clientIp);
                         break;
                     }
 
-                    int dataLength = BitConverter.ToInt32(lengthBuffer, 0);
-                    _logger.LogInformation("Nhận dữ liệu độ dài: {Length} từ {ClientIp}", dataLength, clientIp);
+                    int profileLength = BitConverter.ToInt32(lengthBuffer, 0);
 
-                    if (dataLength == 0) // Marker kết thúc
+                    // Kiểm tra xem đã kết thúc chưa (độ dài 0 là marker kết thúc)
+                    if (profileLength == 0)
                     {
-                        _logger.LogInformation("Đã nhận marker kết thúc từ {ClientIp}", clientIp);
+                        _logger.LogInformation("TcpServerService[0] nhận marker kết thúc từ {ClientIp}", clientIp);
                         break;
-                    }
-
-                    if (dataLength < 0 || dataLength > 5 * 1024 * 1024) // Giới hạn 5MB
-                    {
-                        _logger.LogWarning("Độ dài dữ liệu profile không hợp lý từ {ClientIp}: {Length}", clientIp, dataLength);
-                        errorCount++;
-                        await SendResponseAsync(stream, "ERROR:INVALID_DATA_LENGTH", stoppingToken);
-                        continue;
                     }
 
                     // Đọc nội dung profile
-                    byte[] dataBuffer = new byte[dataLength];
-                    bytesRead = await stream.ReadAsync(dataBuffer, 0, dataLength, stoppingToken);
-                    if (bytesRead < dataLength)
+                    byte[] profileBuffer = new byte[profileLength];
+                    bytesRead = await stream.ReadAsync(profileBuffer, 0, profileLength);
+                    if (bytesRead != profileLength)
                     {
-                        _logger.LogWarning("Nhận dữ liệu profile không đầy đủ từ {ClientIp}: nhận {Received}/{Expected} bytes",
-                            clientIp, bytesRead, dataLength);
+                        _logger.LogWarning("TcpServerService[0] dữ liệu đọc {BytesRead} không khớp với chiều dài {ProfileLength}", bytesRead, profileLength);
+                        await SendResponse(stream, "ERROR: Incomplete profile data");
                         errorCount++;
-                        await SendResponseAsync(stream, "ERROR:INCOMPLETE_DATA", stoppingToken);
                         continue;
                     }
 
-                    string json = Encoding.UTF8.GetString(dataBuffer);
-                    _logger.LogInformation("Nhận dữ liệu JSON từ {ClientIp}: {JsonLength} bytes", clientIp, json.Length);
-
                     try
                     {
-                        var steamCmdProfile = JsonSerializer.Deserialize<SteamCmdWebAPI.Models.SteamCmdProfile>(json);
-                        if (steamCmdProfile == null)
-                        {
-                            _logger.LogWarning("Profile không hợp lệ từ {ClientIp}", clientIp);
-                            errorCount++;
-                            await SendResponseAsync(stream, "ERROR:INVALID_PROFILE", stoppingToken);
-                            continue;
-                        }
+                        string profileJson = Encoding.UTF8.GetString(profileBuffer);
+
+                        // Chuyển đổi dữ liệu JSON thành đối tượng profile
+                        var steamCmdProfile = JsonSerializer.Deserialize<SteamCmdWebAPI.Models.SteamCmdProfile>(profileJson);
 
                         // Chuyển đổi sang ClientProfile
                         var clientProfile = new ClientProfile
@@ -428,60 +382,50 @@ namespace SteamCmdWeb.Services
                             Status = "Ready",
                             StartTime = DateTime.Now,
                             StopTime = DateTime.Now,
-                            LastRun = DateTime.UtcNow
+                            LastRun = DateTime.UtcNow,
+                            Pid = 0
                         };
 
                         // Thêm vào danh sách chờ xác nhận
-                        _syncService.GetPendingProfiles().Add(clientProfile);
-                        _logger.LogInformation("Đã thêm profile {ProfileName} từ {ClientIp} vào danh sách chờ",
-                            clientProfile.Name, clientIp);
+                        _syncService.AddPendingProfile(clientProfile);
+                        profileCount++;
 
-                        processedCount++;
-                        await SendResponseAsync(stream, $"SUCCESS:ADDED_TO_PENDING", stoppingToken);
+                        await SendResponse(stream, $"SUCCESS: Profile {steamCmdProfile.Name} added to pending list");
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogError(ex, "Lỗi khi xử lý profile từ {ClientIp}: {Message}", clientIp, ex.Message);
+                        _logger.LogError(ex, "TcpServerService[0] lỗi khi xử lý profile thứ {Count} từ {ClientIp}", profileCount + 1, clientIp);
+                        await SendResponse(stream, "ERROR: " + ex.Message);
                         errorCount++;
-                        await SendResponseAsync(stream, $"ERROR:{ex.Message}", stoppingToken);
                     }
                 }
 
-                // Gửi thống kê kết quả
-                await SendResponseAsync(stream, $"DONE:{processedCount}:{errorCount}", stoppingToken);
-                _logger.LogInformation("Đã hoàn thành nhận profiles từ {ClientIp}: {Processed} thêm vào danh sách chờ, {Errors} lỗi",
-                    clientIp, processedCount, errorCount);
+                // Gửi kết quả tổng hợp
+                await SendResponse(stream, $"DONE:{profileCount}:{errorCount}");
+                _logger.LogInformation("TcpServerService[0] đã nhận {Count} profiles từ {ClientIp}, có {ErrorCount} lỗi", profileCount, clientIp, errorCount);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Lỗi khi xử lý nhận nhiều profiles từ {ClientIp}: {Message}", clientIp, ex.Message);
-                await SendResponseAsync(stream, $"ERROR:{ex.Message}", stoppingToken);
+                _logger.LogError(ex, "TcpServerService[0] lỗi khi xử lý lệnh SEND_PROFILES từ {ClientIp}", clientIp);
+                await SendResponse(stream, "ERROR: " + ex.Message);
             }
         }
 
-        private async Task SendResponseAsync(NetworkStream stream, string response, CancellationToken stoppingToken)
+        private async Task SendResponse(NetworkStream stream, string response)
         {
-            try
-            {
-                byte[] responseBytes = Encoding.UTF8.GetBytes(response);
-                byte[] lengthBytes = BitConverter.GetBytes(responseBytes.Length);
-                await stream.WriteAsync(lengthBytes, 0, lengthBytes.Length, stoppingToken);
-                await stream.WriteAsync(responseBytes, 0, responseBytes.Length, stoppingToken);
-                await stream.FlushAsync(stoppingToken);
-                _logger.LogInformation("Đã gửi phản hồi: {ResponseLength} bytes", responseBytes.Length);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Lỗi khi gửi phản hồi: {Message}", ex.Message);
-                throw;
-            }
+            byte[] responseBytes = Encoding.UTF8.GetBytes(response);
+            byte[] lengthBytes = BitConverter.GetBytes(responseBytes.Length);
+
+            await stream.WriteAsync(lengthBytes, 0, lengthBytes.Length);
+            await stream.WriteAsync(responseBytes, 0, responseBytes.Length);
+            await stream.FlushAsync();
         }
 
-        public override async Task StopAsync(CancellationToken stoppingToken)
+        public override async Task StopAsync(CancellationToken cancellationToken)
         {
-            _isRunning = false;
+            _logger.LogInformation("TcpServerService đang dừng...");
             _listener?.Stop();
-            await base.StopAsync(stoppingToken);
+            await base.StopAsync(cancellationToken);
         }
     }
 }

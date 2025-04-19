@@ -28,7 +28,7 @@ builder.Services.AddSingleton<DecryptionService>();
 builder.Services.AddSingleton<ProfileService>();
 builder.Services.AddSingleton<SyncService>();
 builder.Services.AddHostedService<SyncBackgroundService>();
-builder.Services.AddHostedService<TcpServerService>();
+builder.Services.AddHostedService<TcpServerService>(); // Thêm TcpServerService vào hệ thống
 
 // Thêm Memory Cache cho cải thiện hiệu suất
 builder.Services.AddMemoryCache();

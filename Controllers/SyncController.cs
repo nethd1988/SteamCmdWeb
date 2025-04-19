@@ -181,12 +181,24 @@ namespace SteamCmdWeb.Controllers
                         LastRun = DateTime.UtcNow
                     };
 
-                    lock (_syncService)
-                    {
-                        _syncService.GetPendingProfiles().Add(pendingProfile);
-                    }
+                    _syncService.AddPendingProfile(pendingProfile);
                     pendingCount++;
                 }
+
+                // Tạo kết quả đồng bộ
+                var syncResult = new SyncResult
+                {
+                    ClientId = clientIp,
+                    Success = true,
+                    Message = $"Đồng bộ thành công. Thêm: {pendingCount}, Bỏ qua: {skipped}",
+                    TotalProfiles = clientProfiles.Count,
+                    NewProfilesAdded = pendingCount,
+                    FilteredProfiles = skipped,
+                    Timestamp = DateTime.Now
+                };
+
+                // Lưu kết quả đồng bộ
+                _syncService.AddSyncResult(syncResult);
 
                 _logger.LogInformation("Đồng bộ hoàn tất. Đã thêm: {Added} vào danh sách chờ, Bỏ qua: {Skipped}", pendingCount, skipped);
 
@@ -252,10 +264,22 @@ namespace SteamCmdWeb.Controllers
                     LastRun = DateTime.UtcNow
                 };
 
-                lock (_syncService)
+                _syncService.AddPendingProfile(pendingProfile);
+
+                // Tạo kết quả đồng bộ
+                var syncResult = new SyncResult
                 {
-                    _syncService.GetPendingProfiles().Add(pendingProfile);
-                }
+                    ClientId = clientIp,
+                    Success = true,
+                    Message = $"Đồng bộ profile {clientProfile.Name} thành công",
+                    TotalProfiles = 1,
+                    NewProfilesAdded = 1,
+                    FilteredProfiles = 0,
+                    Timestamp = DateTime.Now
+                };
+
+                // Lưu kết quả đồng bộ
+                _syncService.AddSyncResult(syncResult);
 
                 _logger.LogInformation("Đã thêm profile {ProfileName} từ client vào danh sách chờ", clientProfile.Name);
 
