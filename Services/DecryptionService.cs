@@ -1,16 +1,30 @@
 ﻿using System;
+using System.IO;
 using System.Security.Cryptography;
 using System.Text;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 
 namespace SteamCmdWeb.Services
 {
     public class DecryptionService
     {
+        private readonly ILogger<DecryptionService> _logger;
         private readonly string _encryptionKey;
 
-        public DecryptionService()
+        public DecryptionService(ILogger<DecryptionService> logger, IConfiguration configuration)
         {
-            _encryptionKey = "SteamCmdWebSecureKey123!@#$%";
+            _logger = logger;
+            _encryptionKey = configuration["EncryptionKey"] ?? throw new InvalidOperationException("EncryptionKey must be provided in configuration.");
+        }
+
+        private byte[] GenerateIV()
+        {
+            using (var aes = Aes.Create())
+            {
+                aes.GenerateIV();
+                return aes.IV;
+            }
         }
 
         public string EncryptString(string plainText)
@@ -18,23 +32,41 @@ namespace SteamCmdWeb.Services
             if (string.IsNullOrEmpty(plainText))
                 return string.Empty;
 
-            byte[] clearBytes = Encoding.Unicode.GetBytes(plainText);
-            using (Aes encryptor = Aes.Create())
+            try
             {
-                Rfc2898DeriveBytes pdb = new Rfc2898DeriveBytes(_encryptionKey,
-                    new byte[] { 0x49, 0x76, 0x61, 0x6e, 0x20, 0x4d, 0x65, 0x64, 0x76, 0x65, 0x64, 0x65, 0x76 },
-                    1000);
-                encryptor.Key = pdb.GetBytes(32);
-                encryptor.IV = pdb.GetBytes(16);
-                using (MemoryStream ms = new MemoryStream())
+                byte[] iv = GenerateIV();
+                byte[] key = Encoding.UTF8.GetBytes(_encryptionKey);
+
+                // Đảm bảo key đúng độ dài 32 bytes (256 bit)
+                Array.Resize(ref key, 32);
+
+                using (Aes aesAlg = Aes.Create())
                 {
-                    using (CryptoStream cs = new CryptoStream(ms, encryptor.CreateEncryptor(), CryptoStreamMode.Write))
+                    aesAlg.Key = key;
+                    aesAlg.IV = iv;
+
+                    ICryptoTransform encryptor = aesAlg.CreateEncryptor(aesAlg.Key, aesAlg.IV);
+
+                    using (MemoryStream msEncrypt = new MemoryStream())
                     {
-                        cs.Write(clearBytes, 0, clearBytes.Length);
-                        cs.Close();
+                        // Ghi IV vào đầu chuỗi mã hóa
+                        msEncrypt.Write(iv, 0, iv.Length);
+
+                        using (CryptoStream csEncrypt = new CryptoStream(msEncrypt, encryptor, CryptoStreamMode.Write))
+                        {
+                            using (StreamWriter swEncrypt = new StreamWriter(csEncrypt))
+                            {
+                                swEncrypt.Write(plainText);
+                            }
+                        }
+                        return Convert.ToBase64String(msEncrypt.ToArray());
                     }
-                    return Convert.ToBase64String(ms.ToArray());
                 }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi mã hóa chuỗi");
+                throw;
             }
         }
 
@@ -45,28 +77,44 @@ namespace SteamCmdWeb.Services
 
             try
             {
+                byte[] key = Encoding.UTF8.GetBytes(_encryptionKey);
+
+                // Đảm bảo key đúng độ dài 32 bytes (256 bit)
+                Array.Resize(ref key, 32);
+
                 byte[] cipherBytes = Convert.FromBase64String(cipherText);
-                using (Aes encryptor = Aes.Create())
+
+                // Trích xuất IV từ đầu chuỗi (16 bytes đầu tiên)
+                byte[] iv = new byte[16];
+                Array.Copy(cipherBytes, 0, iv, 0, iv.Length);
+
+                // Phần còn lại là dữ liệu mã hóa
+                byte[] encryptedData = new byte[cipherBytes.Length - iv.Length];
+                Array.Copy(cipherBytes, iv.Length, encryptedData, 0, encryptedData.Length);
+
+                using (Aes aesAlg = Aes.Create())
                 {
-                    Rfc2898DeriveBytes pdb = new Rfc2898DeriveBytes(_encryptionKey,
-                        new byte[] { 0x49, 0x76, 0x61, 0x6e, 0x20, 0x4d, 0x65, 0x64, 0x76, 0x65, 0x64, 0x65, 0x76 },
-                        1000);
-                    encryptor.Key = pdb.GetBytes(32);
-                    encryptor.IV = pdb.GetBytes(16);
-                    using (MemoryStream ms = new MemoryStream())
+                    aesAlg.Key = key;
+                    aesAlg.IV = iv;
+
+                    ICryptoTransform decryptor = aesAlg.CreateDecryptor(aesAlg.Key, aesAlg.IV);
+
+                    using (MemoryStream msDecrypt = new MemoryStream(encryptedData))
                     {
-                        using (CryptoStream cs = new CryptoStream(ms, encryptor.CreateDecryptor(), CryptoStreamMode.Write))
+                        using (CryptoStream csDecrypt = new CryptoStream(msDecrypt, decryptor, CryptoStreamMode.Read))
                         {
-                            cs.Write(cipherBytes, 0, cipherBytes.Length);
-                            cs.Close();
+                            using (StreamReader srDecrypt = new StreamReader(csDecrypt))
+                            {
+                                return srDecrypt.ReadToEnd();
+                            }
                         }
-                        return Encoding.Unicode.GetString(ms.ToArray());
                     }
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                return string.Empty;
+                _logger.LogError(ex, "Lỗi khi giải mã chuỗi");
+                return cipherText; // Trả về chuỗi gốc nếu không giải mã được
             }
         }
     }

@@ -10,6 +10,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using SteamCmdWeb.Models;
 using SteamCmdWeb.Services;
+using Microsoft.Extensions.Configuration;
 
 namespace SteamCmdWeb.Services
 {
@@ -18,17 +19,20 @@ namespace SteamCmdWeb.Services
         private readonly ILogger<TcpServerService> _logger;
         private readonly SyncService _syncService;
         private readonly int _port = 61188;
+        private readonly string _authToken;
         private TcpListener _listener;
         private readonly DecryptionService _decryptionService;
 
         public TcpServerService(
             ILogger<TcpServerService> logger,
             SyncService syncService,
-            DecryptionService decryptionService)
+            DecryptionService decryptionService,
+            IConfiguration configuration)
         {
             _logger = logger;
             _syncService = syncService;
             _decryptionService = decryptionService;
+            _authToken = configuration["AuthToken"] ?? "simple_auth_token"; // Configurable token
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -140,7 +144,7 @@ namespace SteamCmdWeb.Services
             }
 
             string token = authParts[1];
-            if (token != "simple_auth_token")
+            if (token != _authToken)
             {
                 _logger.LogWarning("TcpServerService[0] token không hợp lệ từ {ClientIp}: {Token}", clientIp, token);
                 await SendResponse(stream, "ERROR: Invalid authentication token");
@@ -192,16 +196,26 @@ namespace SteamCmdWeb.Services
                     return;
                 }
 
-                // Tạo danh sách tên profiles
-                var profileNames = new List<string>();
+                // Chuẩn bị danh sách profiles để gửi
                 foreach (var profile in profiles)
                 {
-                    profileNames.Add(profile.Name);
+                    if (!profile.AnonymousLogin)
+                    {
+                        // Đảm bảo thông tin đăng nhập được mã hóa
+                        if (!string.IsNullOrEmpty(profile.SteamUsername))
+                        {
+                            profile.SteamUsername = _decryptionService.EncryptString(profile.SteamUsername);
+                        }
+                        if (!string.IsNullOrEmpty(profile.SteamPassword))
+                        {
+                            profile.SteamPassword = _decryptionService.EncryptString(profile.SteamPassword);
+                        }
+                    }
                 }
 
-                // Gửi danh sách tên profiles
-                string response = string.Join(",", profileNames);
-                _logger.LogInformation("TcpServerService[0] gửi {Count} tên profiles tới {ClientIp}", profileNames.Count, clientIp);
+                // Gửi danh sách profiles dưới dạng JSON
+                string response = JsonSerializer.Serialize(profiles);
+                _logger.LogInformation("TcpServerService[0] gửi {Count} profiles tới {ClientIp}", profiles.Count, clientIp);
                 await SendResponse(stream, response);
             }
             catch (Exception ex)
@@ -224,24 +238,21 @@ namespace SteamCmdWeb.Services
                     return;
                 }
 
-                // Chuyển đổi từ ClientProfile sang SteamCmdProfile
-                var steamCmdProfile = new SteamCmdWebAPI.Models.SteamCmdProfile
+                // Đảm bảo thông tin đăng nhập được mã hóa
+                if (!profile.AnonymousLogin)
                 {
-                    Name = profile.Name,
-                    AppID = profile.AppID,
-                    InstallDirectory = profile.InstallDirectory,
-                    Arguments = profile.Arguments,
-                    ValidateFiles = profile.ValidateFiles,
-                    AutoRun = profile.AutoRun,
-                    AnonymousLogin = profile.AnonymousLogin,
-                    Status = profile.Status,
-                    StartTime = profile.StartTime,
-                    StopTime = profile.StopTime,
-                    LastRun = profile.LastRun
-                };
+                    if (!string.IsNullOrEmpty(profile.SteamUsername))
+                    {
+                        profile.SteamUsername = _decryptionService.EncryptString(profile.SteamUsername);
+                    }
+                    if (!string.IsNullOrEmpty(profile.SteamPassword))
+                    {
+                        profile.SteamPassword = _decryptionService.EncryptString(profile.SteamPassword);
+                    }
+                }
 
                 // Gửi chi tiết profile
-                string response = JsonSerializer.Serialize(steamCmdProfile);
+                string response = JsonSerializer.Serialize(profile);
                 _logger.LogInformation("TcpServerService[0] gửi chi tiết profile {ProfileName} tới {ClientIp}", profileName, clientIp);
                 await SendResponse(stream, response);
             }
@@ -305,6 +316,19 @@ namespace SteamCmdWeb.Services
                     LastRun = DateTime.UtcNow,
                     Pid = 0
                 };
+
+                // Đảm bảo thông tin đăng nhập được mã hóa
+                if (!clientProfile.AnonymousLogin)
+                {
+                    if (!string.IsNullOrEmpty(clientProfile.SteamUsername))
+                    {
+                        clientProfile.SteamUsername = _decryptionService.EncryptString(clientProfile.SteamUsername);
+                    }
+                    if (!string.IsNullOrEmpty(clientProfile.SteamPassword))
+                    {
+                        clientProfile.SteamPassword = _decryptionService.EncryptString(clientProfile.SteamPassword);
+                    }
+                }
 
                 // Thêm vào danh sách chờ xác nhận
                 _logger.LogInformation("TcpServerService[0] đã thêm profile {ProfileName} từ {ClientIp} vào danh sách chờ", steamCmdProfile.Name, clientIp);
@@ -386,6 +410,19 @@ namespace SteamCmdWeb.Services
                             Pid = 0
                         };
 
+                        // Đảm bảo thông tin đăng nhập được mã hóa
+                        if (!clientProfile.AnonymousLogin)
+                        {
+                            if (!string.IsNullOrEmpty(clientProfile.SteamUsername))
+                            {
+                                clientProfile.SteamUsername = _decryptionService.EncryptString(clientProfile.SteamUsername);
+                            }
+                            if (!string.IsNullOrEmpty(clientProfile.SteamPassword))
+                            {
+                                clientProfile.SteamPassword = _decryptionService.EncryptString(clientProfile.SteamPassword);
+                            }
+                        }
+
                         // Thêm vào danh sách chờ xác nhận
                         _syncService.AddPendingProfile(clientProfile);
                         profileCount++;
@@ -413,12 +450,19 @@ namespace SteamCmdWeb.Services
 
         private async Task SendResponse(NetworkStream stream, string response)
         {
-            byte[] responseBytes = Encoding.UTF8.GetBytes(response);
-            byte[] lengthBytes = BitConverter.GetBytes(responseBytes.Length);
+            try
+            {
+                byte[] responseBytes = Encoding.UTF8.GetBytes(response);
+                byte[] lengthBytes = BitConverter.GetBytes(responseBytes.Length);
 
-            await stream.WriteAsync(lengthBytes, 0, lengthBytes.Length);
-            await stream.WriteAsync(responseBytes, 0, responseBytes.Length);
-            await stream.FlushAsync();
+                await stream.WriteAsync(lengthBytes, 0, lengthBytes.Length);
+                await stream.WriteAsync(responseBytes, 0, responseBytes.Length);
+                await stream.FlushAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi gửi phản hồi qua stream");
+            }
         }
 
         public override async Task StopAsync(CancellationToken cancellationToken)

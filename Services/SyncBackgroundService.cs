@@ -3,7 +3,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using SteamCmdWeb.Services;
 
 namespace SteamCmdWeb.Services
 {
@@ -11,7 +10,7 @@ namespace SteamCmdWeb.Services
     {
         private readonly ILogger<SyncBackgroundService> _logger;
         private readonly SyncService _syncService;
-        private readonly TimeSpan _checkInterval = TimeSpan.FromMinutes(10);
+        private readonly TimeSpan _interval = TimeSpan.FromMinutes(30);
 
         public SyncBackgroundService(
             ILogger<SyncBackgroundService> logger,
@@ -29,16 +28,16 @@ namespace SteamCmdWeb.Services
             {
                 try
                 {
-                    // Kiểm tra các client mới trên mạng định kỳ
+                    _logger.LogInformation("Bắt đầu quét mạng và đồng bộ tự động");
                     await _syncService.DiscoverAndSyncClientsAsync();
-                    _logger.LogInformation("Đã hoàn thành kiểm tra đồng bộ tự động");
+                    _logger.LogInformation("Đã hoàn thành quét mạng và đồng bộ tự động");
                 }
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "Lỗi trong quá trình đồng bộ tự động");
                 }
 
-                await Task.Delay(_checkInterval, stoppingToken);
+                await Task.Delay(_interval, stoppingToken);
             }
         }
     }

@@ -36,11 +36,11 @@ namespace SteamCmdWeb.Pages
         {
             try
             {
-                // Lấy kết quả đồng bộ gần đây
-                SyncResults = _syncService.GetSyncResults();
+                // Lấy kết quả đồng bộ gần đây (defensive copy to avoid concurrency issues)
+                SyncResults = new List<SyncResult>(_syncService.GetSyncResults());
 
-                // Lấy danh sách profile đang chờ
-                PendingProfiles = _syncService.GetPendingProfiles();
+                // Lấy danh sách profile đang chờ (defensive copy)
+                PendingProfiles = new List<ClientProfile>(_syncService.GetPendingProfiles());
 
                 _logger.LogInformation("Đã tải trang quản lý đồng bộ với {ResultCount} kết quả và {PendingCount} profile đang chờ",
                     SyncResults.Count, PendingProfiles.Count);

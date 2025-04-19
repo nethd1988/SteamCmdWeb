@@ -80,7 +80,7 @@
                             <th>Tên</th>
                             <th>App ID</th>
                             <th>Thư mục cài đặt</th>
-                            <th>Loại đăng nhập</th>
+                            <th>Tài khoản đăng nhập</th>
                             <th>Thao tác</th>
                         </tr>
                     </thead>
@@ -107,7 +107,10 @@
                                         }
                                         else
                                         {
-                                            <span class="badge bg-info">Tài khoản</span>
+                                            <div>
+                                                <strong>Tài khoản:</strong> @profile.SteamUsername<br />
+                                                <strong>Mật khẩu:</strong> @profile.SteamPassword
+                                            </div>
                                         }
                                     </td>
                                     <td>

@@ -45,7 +45,7 @@ namespace SteamCmdWeb.Services
                 string jsonContent;
                 lock (_fileLock)
                 {
-                    jsonContent = File.ReadAllText(_profilesFilePath);
+                    jsonContent = File.ReadAllTextAsync(_profilesFilePath).GetAwaiter().GetResult();
                 }
 
                 if (string.IsNullOrWhiteSpace(jsonContent))
@@ -168,7 +168,7 @@ namespace SteamCmdWeb.Services
 
                 lock (_fileLock)
                 {
-                    File.WriteAllText(_profilesFilePath, json);
+                    File.WriteAllTextAsync(_profilesFilePath, json).GetAwaiter().GetResult();
                 }
             }
             catch (Exception ex)
