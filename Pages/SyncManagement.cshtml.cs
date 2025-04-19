@@ -80,17 +80,18 @@ namespace SteamCmdWeb.Pages
         {
             try
             {
-                await _syncService.ScanLocalNetworkAsync();
+                // Sử dụng phương thức tìm kiếm trên mạng rộng thay vì chỉ mạng cục bộ
+                await _syncService.DiscoverAndSyncClientsAsync();
 
-                StatusMessage = "Đã quét mạng và đồng bộ với các client tìm thấy";
+                StatusMessage = "Đã tìm kiếm và đồng bộ với các client SteamCmdWebAPI từ xa";
                 IsSuccess = true;
 
                 return RedirectToPage();
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Lỗi khi quét mạng");
-                StatusMessage = "Đã xảy ra lỗi khi quét mạng: " + ex.Message;
+                _logger.LogError(ex, "Lỗi khi tìm kiếm client");
+                StatusMessage = "Đã xảy ra lỗi khi tìm kiếm client: " + ex.Message;
                 IsSuccess = false;
                 return RedirectToPage();
             }

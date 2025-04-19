@@ -27,6 +27,18 @@ namespace SteamCmdWeb.Services
         {
             _logger.LogInformation("Dịch vụ đồng bộ nền đã bắt đầu. Sẽ đồng bộ mỗi {Minutes} phút", _syncInterval.TotalMinutes);
 
+            // Chạy tìm kiếm và đồng bộ client ngay khi khởi động
+            try
+            {
+                _logger.LogInformation("Thực hiện tìm kiếm và đồng bộ client khi khởi động");
+                await _syncService.DiscoverAndSyncClientsAsync();
+                _lastScanTime = DateTime.Now;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi tìm kiếm và đồng bộ client khi khởi động");
+            }
+
             while (!stoppingToken.IsCancellationRequested)
             {
                 try
@@ -42,7 +54,7 @@ namespace SteamCmdWeb.Services
                     if ((DateTime.Now - _lastScanTime) > _scanInterval)
                     {
                         _logger.LogInformation("Bắt đầu quét mạng cục bộ để tìm client mới");
-                        await _syncService.ScanLocalNetworkAsync();
+                        await _syncService.DiscoverAndSyncClientsAsync();
                         _lastScanTime = DateTime.Now;
                     }
 
@@ -64,21 +76,13 @@ namespace SteamCmdWeb.Services
 
                     _logger.LogInformation("Đồng bộ tự động hoàn tất. Thành công: {SuccessCount}/{TotalCount} clients, thêm {NewProfiles} profiles mới",
                         successCount, results.Count, totalNewProfiles);
+
+                    // Đợi đến lần chạy tiếp theo
+                    await Task.Delay(_syncInterval, stoppingToken);
                 }
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "Lỗi trong quá trình đồng bộ tự động");
-                }
-
-                // Đợi cho đến khi đến lần đồng bộ tiếp theo
-                try
-                {
-                    await Task.Delay(_syncInterval, stoppingToken);
-                }
-                catch (TaskCanceledException)
-                {
-                    // Bỏ qua nếu bị hủy (dịch vụ đang dừng)
-                    break;
                 }
             }
 

@@ -23,121 +23,67 @@ namespace SteamCmdWeb.Controllers
             _syncService = syncService ?? throw new ArgumentNullException(nameof(syncService));
         }
 
-        // Lấy danh sách client đã đăng ký
-        [HttpGet("clients")]
-        public IActionResult GetRegisteredClients()
+        // Lấy kết quả đồng bộ gần đây
+        [HttpGet("results")]
+        public IActionResult GetSyncResults()
         {
             try
             {
-                var clients = _syncService.GetRegisteredClients();
-                return Ok(clients);
+                var results = _syncService.GetSyncResults();
+                return Ok(results);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Lỗi khi lấy danh sách client đã đăng ký");
+                _logger.LogError(ex, "Lỗi khi lấy danh sách kết quả đồng bộ");
                 return StatusCode(500, new { error = ex.Message });
             }
         }
 
-        // Đăng ký client mới
-        // Đảm bảo rằng tham số trong phương thức RegisterClient đã được cập nhật đúng kiểu
-        [HttpPost("register")]
-        public IActionResult RegisterClient([FromBody] Models.ClientRegistration client)
+        // Đồng bộ từ một địa chỉ IP cụ thể
+        [HttpPost("sync-ip")]
+        public async Task<IActionResult> SyncFromIp([FromBody] SyncIpRequest request)
         {
             try
             {
-                if (client == null)
+                if (request == null || string.IsNullOrEmpty(request.Ip))
                 {
-                    return BadRequest("Dữ liệu không hợp lệ");
+                    return BadRequest(new { success = false, message = "Địa chỉ IP không được để trống" });
                 }
 
-                // Thiết lập thông tin bổ sung
-                client.RegisteredAt = DateTime.Now;
-
-                // Nếu không cung cấp token, tạo một token đơn giản
-                if (string.IsNullOrEmpty(client.AuthToken))
-                {
-                    client.AuthToken = Guid.NewGuid().ToString("N");
-                }
-
-                // Đăng ký với service
-                _syncService.RegisterClient(client);
-
-                return Ok(new
-                {
-                    success = true,
-                    message = "Đăng ký thành công",
-                    clientId = client.ClientId,
-                    authToken = client.AuthToken
-                });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Lỗi khi đăng ký client");
-                return StatusCode(500, new { error = ex.Message });
-            }
-        }
-
-        // Xóa đăng ký client
-        [HttpDelete("unregister/{clientId}")]
-        public IActionResult UnregisterClient(string clientId)
-        {
-            try
-            {
-                if (string.IsNullOrEmpty(clientId))
-                {
-                    return BadRequest("ClientId không được để trống");
-                }
-
-                bool success = _syncService.UnregisterClient(clientId);
-
-                if (success)
-                {
-                    return Ok(new { success = true, message = "Đã xóa đăng ký thành công" });
-                }
-                else
-                {
-                    return NotFound(new { success = false, message = "Không tìm thấy client với ID này" });
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Lỗi khi xóa đăng ký client {ClientId}", clientId);
-                return StatusCode(500, new { error = ex.Message });
-            }
-        }
-
-        // Chạy đồng bộ thủ công từ một client
-        [HttpPost("sync/{clientId}")]
-        public async Task<IActionResult> SyncFromClient(string clientId)
-        {
-            try
-            {
-                var clients = _syncService.GetRegisteredClients();
-                var client = clients.FirstOrDefault(c => c.ClientId == clientId);
-
-                if (client == null)
-                {
-                    return NotFound(new { success = false, message = "Không tìm thấy client" });
-                }
-
-                var result = await _syncService.SyncProfilesFromClientAsync(client);
+                int port = request.Port > 0 ? request.Port : 61188;
+                var result = await _syncService.SyncFromIpAsync(request.Ip, port);
                 return Ok(result);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Lỗi khi đồng bộ từ client {ClientId}", clientId);
+                _logger.LogError(ex, "Lỗi khi đồng bộ từ địa chỉ IP {Ip}", request.Ip);
                 return StatusCode(500, new { error = ex.Message });
             }
         }
 
-        // Chạy đồng bộ thủ công từ tất cả client
+        // Quét mạng để tìm client
+        [HttpPost("scan-network")]
+        public async Task<IActionResult> ScanNetwork()
+        {
+            try
+            {
+                await _syncService.ScanLocalNetworkAsync();
+                return Ok(new { success = true, message = "Đã quét mạng và đồng bộ với các client tìm thấy" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi quét mạng");
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
+        // Đồng bộ từ tất cả các client đã biết
         [HttpPost("sync-all")]
         public async Task<IActionResult> SyncFromAllClients()
         {
             try
             {
-                var results = await _syncService.SyncFromAllClientsAsync();
+                var results = await _syncService.SyncFromAllKnownClientsAsync();
                 return Ok(new
                 {
                     success = true,
@@ -153,5 +99,11 @@ namespace SteamCmdWeb.Controllers
                 return StatusCode(500, new { error = ex.Message });
             }
         }
+    }
+
+    public class SyncIpRequest
+    {
+        public string Ip { get; set; }
+        public int Port { get; set; } = 61188;
     }
 }
