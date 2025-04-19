@@ -102,5 +102,5 @@ if (!Directory.Exists(syncFolder))
 // Health Check endpoint
 app.MapGet("/health", () => new { Status = "Healthy", Timestamp = DateTime.UtcNow });
 
-app.Logger.LogInformation("SteamCmdWeb Server đã khởi động.");
+app.Logger.LogInformation("SteamCmdWeb Server đã khởi động trên port 61188.");
 app.Run();

@@ -16,21 +16,25 @@ namespace SteamCmdWeb.Services
         private readonly string _profilesFilePath;
         private readonly object _fileLock = new object();
 
-        public ProfileService(ILogger<ProfileService> logger, DecryptionService decryptionService)
+        public ProfileService(
+            ILogger<ProfileService> logger,
+            DecryptionService decryptionService)
         {
             _logger = logger;
             _decryptionService = decryptionService;
 
-            string dataDirectory = Path.Combine(Directory.GetCurrentDirectory(), "Data");
-            if (!Directory.Exists(dataDirectory))
+            var dataFolder = Path.Combine(Directory.GetCurrentDirectory(), "Data");
+            if (!Directory.Exists(dataFolder))
             {
-                Directory.CreateDirectory(dataDirectory);
+                Directory.CreateDirectory(dataFolder);
+                _logger.LogInformation("Đã tạo thư mục Data");
             }
 
-            _profilesFilePath = Path.Combine(dataDirectory, "profiles.json");
+            _profilesFilePath = Path.Combine(dataFolder, "profiles.json");
             if (!File.Exists(_profilesFilePath))
             {
                 File.WriteAllText(_profilesFilePath, "[]");
+                _logger.LogInformation("Đã tạo file profiles.json trống");
             }
         }
 
@@ -38,14 +42,26 @@ namespace SteamCmdWeb.Services
         {
             try
             {
-                string json = await File.ReadAllTextAsync(_profilesFilePath);
-                var profiles = JsonSerializer.Deserialize<List<ClientProfile>>(json) ?? new List<ClientProfile>();
-                return profiles;
+                string jsonContent;
+                lock (_fileLock)
+                {
+                    jsonContent = File.ReadAllText(_profilesFilePath);
+                }
+
+                if (string.IsNullOrWhiteSpace(jsonContent))
+                {
+                    return new List<ClientProfile>();
+                }
+
+                var profiles = JsonSerializer.Deserialize<List<ClientProfile>>(jsonContent,
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+                return profiles ?? new List<ClientProfile>();
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Lỗi khi đọc file profiles");
-                return new List<ClientProfile>();
+                _logger.LogError(ex, "Lỗi khi đọc danh sách profiles");
+                throw new Exception($"Không thể đọc danh sách profiles: {ex.Message}", ex);
             }
         }
 
@@ -58,117 +74,108 @@ namespace SteamCmdWeb.Services
         public async Task<ClientProfile> GetDecryptedProfileByIdAsync(int id)
         {
             var profile = await GetProfileByIdAsync(id);
-            if (profile == null) return null;
-
-            // Tạo bản sao để không ảnh hưởng đến dữ liệu gốc
-            var decryptedProfile = new ClientProfile
+            if (profile == null)
             {
-                Id = profile.Id,
-                Name = profile.Name,
-                AppID = profile.AppID,
-                InstallDirectory = profile.InstallDirectory,
-                Arguments = profile.Arguments,
-                ValidateFiles = profile.ValidateFiles,
-                AutoRun = profile.AutoRun,
-                AnonymousLogin = profile.AnonymousLogin,
-                Status = profile.Status,
-                StartTime = profile.StartTime,
-                StopTime = profile.StopTime,
-                Pid = profile.Pid,
-                LastRun = profile.LastRun
-            };
+                return null;
+            }
 
-            // Giải mã thông tin đăng nhập nếu không phải anonymous
             if (!profile.AnonymousLogin)
             {
+                // Giải mã thông tin đăng nhập
                 try
                 {
                     if (!string.IsNullOrEmpty(profile.SteamUsername))
                     {
-                        decryptedProfile.SteamUsername = _decryptionService.DecryptString(profile.SteamUsername);
+                        profile.SteamUsername = _decryptionService.DecryptString(profile.SteamUsername);
                     }
 
                     if (!string.IsNullOrEmpty(profile.SteamPassword))
                     {
-                        decryptedProfile.SteamPassword = _decryptionService.DecryptString(profile.SteamPassword);
+                        profile.SteamPassword = _decryptionService.DecryptString(profile.SteamPassword);
                     }
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Lỗi khi giải mã thông tin đăng nhập cho profile {ProfileId}", profile.Id);
-                    decryptedProfile.SteamUsername = "[Lỗi giải mã]";
-                    decryptedProfile.SteamPassword = "[Lỗi giải mã]";
+                    _logger.LogError(ex, "Lỗi khi giải mã thông tin đăng nhập cho profile ID {Id}", id);
                 }
             }
 
-            return decryptedProfile;
+            return profile;
         }
 
         public async Task<ClientProfile> AddProfileAsync(ClientProfile profile)
         {
-            lock (_fileLock)
+            var profiles = await GetAllProfilesAsync();
+
+            // Tạo ID mới
+            int newId = profiles.Count > 0 ? profiles.Max(p => p.Id) + 1 : 1;
+            profile.Id = newId;
+
+            // Nếu là đăng nhập ẩn danh, xóa thông tin đăng nhập
+            if (profile.AnonymousLogin)
             {
-                var profiles = GetAllProfilesAsync().Result;
-
-                // Đặt ID mới
-                int newId = profiles.Count > 0 ? profiles.Max(p => p.Id) + 1 : 1;
-                profile.Id = newId;
-
-                // Đặt các giá trị mặc định
-                if (string.IsNullOrEmpty(profile.Status))
-                    profile.Status = "Ready";
-
-                profile.StartTime = DateTime.Now;
-                profile.StopTime = DateTime.Now;
-                profile.LastRun = DateTime.UtcNow;
-                profile.Pid = 0;
-
-                profiles.Add(profile);
-                SaveProfilesAsync(profiles).Wait();
-
-                return profile;
+                profile.SteamUsername = string.Empty;
+                profile.SteamPassword = string.Empty;
             }
+
+            profiles.Add(profile);
+            await SaveProfilesAsync(profiles);
+
+            return profile;
         }
 
         public async Task<bool> UpdateProfileAsync(ClientProfile profile)
         {
-            lock (_fileLock)
+            var profiles = await GetAllProfilesAsync();
+            int index = profiles.FindIndex(p => p.Id == profile.Id);
+            if (index == -1)
             {
-                var profiles = GetAllProfilesAsync().Result;
-                int index = profiles.FindIndex(p => p.Id == profile.Id);
-
-                if (index == -1)
-                    return false;
-
-                profiles[index] = profile;
-                SaveProfilesAsync(profiles).Wait();
-
-                return true;
+                return false;
             }
+
+            // Nếu là đăng nhập ẩn danh, xóa thông tin đăng nhập
+            if (profile.AnonymousLogin)
+            {
+                profile.SteamUsername = string.Empty;
+                profile.SteamPassword = string.Empty;
+            }
+
+            profiles[index] = profile;
+            await SaveProfilesAsync(profiles);
+            return true;
         }
 
         public async Task<bool> DeleteProfileAsync(int id)
         {
-            lock (_fileLock)
+            var profiles = await GetAllProfilesAsync();
+            int index = profiles.FindIndex(p => p.Id == id);
+            if (index == -1)
             {
-                var profiles = GetAllProfilesAsync().Result;
-                int index = profiles.FindIndex(p => p.Id == id);
-
-                if (index == -1)
-                    return false;
-
-                profiles.RemoveAt(index);
-                SaveProfilesAsync(profiles).Wait();
-
-                return true;
+                return false;
             }
+
+            profiles.RemoveAt(index);
+            await SaveProfilesAsync(profiles);
+            return true;
         }
 
         private async Task SaveProfilesAsync(List<ClientProfile> profiles)
         {
-            var options = new JsonSerializerOptions { WriteIndented = true };
-            string json = JsonSerializer.Serialize(profiles, options);
-            await File.WriteAllTextAsync(_profilesFilePath, json);
+            try
+            {
+                string json = JsonSerializer.Serialize(profiles,
+                    new JsonSerializerOptions { WriteIndented = true });
+
+                lock (_fileLock)
+                {
+                    File.WriteAllText(_profilesFilePath, json);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi lưu danh sách profiles");
+                throw new Exception($"Không thể lưu danh sách profiles: {ex.Message}", ex);
+            }
         }
     }
 }

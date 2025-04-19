@@ -15,17 +15,124 @@ namespace SteamCmdWeb.Controllers
     public class SyncController : ControllerBase
     {
         private readonly ProfileService _profileService;
+        private readonly SyncService _syncService;
         private readonly DecryptionService _decryptionService;
         private readonly ILogger<SyncController> _logger;
 
         public SyncController(
             ProfileService profileService,
+            SyncService syncService,
             DecryptionService decryptionService,
             ILogger<SyncController> logger)
         {
             _profileService = profileService;
+            _syncService = syncService;
             _decryptionService = decryptionService;
             _logger = logger;
+        }
+
+        [HttpGet("pending")]
+        public IActionResult GetPendingProfiles()
+        {
+            try
+            {
+                var pendingProfiles = _syncService.GetPendingProfiles();
+                return Ok(new
+                {
+                    success = true,
+                    count = pendingProfiles.Count,
+                    profiles = pendingProfiles
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi lấy danh sách profile đang chờ");
+                return StatusCode(500, new { success = false, message = $"Lỗi: {ex.Message}" });
+            }
+        }
+
+        [HttpPost("confirm/{index}")]
+        public async Task<IActionResult> ConfirmProfile(int index)
+        {
+            try
+            {
+                bool success = await _syncService.ConfirmProfileAsync(index);
+                if (success)
+                {
+                    return Ok(new { success = true, message = "Đã xác nhận và thêm profile vào danh sách chính" });
+                }
+                else
+                {
+                    return BadRequest(new { success = false, message = "Không tìm thấy profile trong danh sách chờ" });
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi xác nhận profile");
+                return StatusCode(500, new { success = false, message = $"Lỗi: {ex.Message}" });
+            }
+        }
+
+        [HttpPost("reject/{index}")]
+        public IActionResult RejectProfile(int index)
+        {
+            try
+            {
+                bool success = _syncService.RejectProfile(index);
+                if (success)
+                {
+                    return Ok(new { success = true, message = "Đã từ chối profile" });
+                }
+                else
+                {
+                    return BadRequest(new { success = false, message = "Không tìm thấy profile trong danh sách chờ" });
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi từ chối profile");
+                return StatusCode(500, new { success = false, message = $"Lỗi: {ex.Message}" });
+            }
+        }
+
+        [HttpPost("confirm-all")]
+        public async Task<IActionResult> ConfirmAllProfiles()
+        {
+            try
+            {
+                int addedCount = await _syncService.ConfirmAllPendingProfilesAsync();
+                return Ok(new
+                {
+                    success = true,
+                    message = $"Đã xác nhận và thêm {addedCount} profile vào danh sách chính",
+                    count = addedCount
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi xác nhận tất cả profile");
+                return StatusCode(500, new { success = false, message = $"Lỗi: {ex.Message}" });
+            }
+        }
+
+        [HttpPost("reject-all")]
+        public IActionResult RejectAllProfiles()
+        {
+            try
+            {
+                int rejectedCount = _syncService.RejectAllPendingProfiles();
+                return Ok(new
+                {
+                    success = true,
+                    message = $"Đã từ chối {rejectedCount} profile",
+                    count = rejectedCount
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi từ chối tất cả profile");
+                return StatusCode(500, new { success = false, message = $"Lỗi: {ex.Message}" });
+            }
         }
 
         [HttpPost("profiles")]
@@ -44,49 +151,50 @@ namespace SteamCmdWeb.Controllers
                 var existingProfiles = await _profileService.GetAllProfilesAsync();
                 var existingAppIds = existingProfiles.Select(p => p.AppID).ToHashSet();
 
-                int added = 0;
+                int pendingCount = 0;
                 int skipped = 0;
 
                 foreach (var clientProfile in clientProfiles)
                 {
-                    // Chỉ lấy các profile có AppID chưa tồn tại
-                    if (!existingAppIds.Contains(clientProfile.AppID))
-                    {
-                        // Chuyển đổi từ SteamCmdProfile sang ClientProfile
-                        var newProfile = new ClientProfile
-                        {
-                            Name = clientProfile.Name,
-                            AppID = clientProfile.AppID,
-                            InstallDirectory = clientProfile.InstallDirectory,
-                            SteamUsername = clientProfile.SteamUsername,
-                            SteamPassword = clientProfile.SteamPassword,
-                            Arguments = clientProfile.Arguments,
-                            ValidateFiles = clientProfile.ValidateFiles,
-                            AutoRun = clientProfile.AutoRun,
-                            AnonymousLogin = clientProfile.AnonymousLogin,
-                            Status = "Ready",
-                            StartTime = DateTime.Now,
-                            StopTime = DateTime.Now,
-                            LastRun = DateTime.UtcNow
-                        };
-
-                        await _profileService.AddProfileAsync(newProfile);
-                        existingAppIds.Add(clientProfile.AppID); // Cập nhật để không thêm trùng
-                        added++;
-                    }
-                    else
+                    // Kiểm tra AppID đã tồn tại chưa
+                    if (existingAppIds.Contains(clientProfile.AppID))
                     {
                         skipped++;
+                        continue;
                     }
+
+                    // Chuyển đổi sang ClientProfile và thêm vào danh sách chờ
+                    var pendingProfile = new ClientProfile
+                    {
+                        Name = clientProfile.Name,
+                        AppID = clientProfile.AppID,
+                        InstallDirectory = clientProfile.InstallDirectory,
+                        SteamUsername = clientProfile.SteamUsername,
+                        SteamPassword = clientProfile.SteamPassword,
+                        Arguments = clientProfile.Arguments,
+                        ValidateFiles = clientProfile.ValidateFiles,
+                        AutoRun = clientProfile.AutoRun,
+                        AnonymousLogin = clientProfile.AnonymousLogin,
+                        Status = "Ready",
+                        StartTime = DateTime.Now,
+                        StopTime = DateTime.Now,
+                        LastRun = DateTime.UtcNow
+                    };
+
+                    lock (_syncService)
+                    {
+                        _syncService.GetPendingProfiles().Add(pendingProfile);
+                    }
+                    pendingCount++;
                 }
 
-                _logger.LogInformation("Đồng bộ hoàn tất. Đã thêm: {Added}, Bỏ qua: {Skipped}", added, skipped);
+                _logger.LogInformation("Đồng bộ hoàn tất. Đã thêm: {Added} vào danh sách chờ, Bỏ qua: {Skipped}", pendingCount, skipped);
 
                 return Ok(new
                 {
                     success = true,
-                    message = $"Đồng bộ hoàn tất. Đã thêm: {added}, Bỏ qua: {skipped}",
-                    added,
+                    message = $"Đồng bộ hoàn tất. Đã thêm: {pendingCount} vào danh sách chờ, Bỏ qua: {skipped}",
+                    pending = pendingCount,
                     skipped,
                     total = clientProfiles.Count
                 });
@@ -115,38 +223,7 @@ namespace SteamCmdWeb.Controllers
                 var existingAppIds = existingProfiles.Select(p => p.AppID).ToHashSet();
 
                 // Kiểm tra AppID đã tồn tại chưa
-                if (!existingAppIds.Contains(clientProfile.AppID))
-                {
-                    // Chuyển đổi từ SteamCmdProfile sang ClientProfile
-                    var newProfile = new ClientProfile
-                    {
-                        Name = clientProfile.Name,
-                        AppID = clientProfile.AppID,
-                        InstallDirectory = clientProfile.InstallDirectory,
-                        SteamUsername = clientProfile.SteamUsername,
-                        SteamPassword = clientProfile.SteamPassword,
-                        Arguments = clientProfile.Arguments,
-                        ValidateFiles = clientProfile.ValidateFiles,
-                        AutoRun = clientProfile.AutoRun,
-                        AnonymousLogin = clientProfile.AnonymousLogin,
-                        Status = "Ready",
-                        StartTime = DateTime.Now,
-                        StopTime = DateTime.Now,
-                        LastRun = DateTime.UtcNow
-                    };
-
-                    await _profileService.AddProfileAsync(newProfile);
-                    _logger.LogInformation("Đã thêm profile mới từ client: {ProfileName}, AppID: {AppID}",
-                        clientProfile.Name, clientProfile.AppID);
-
-                    return Ok(new
-                    {
-                        success = true,
-                        message = $"Đã thêm profile {clientProfile.Name}",
-                        added = true
-                    });
-                }
-                else
+                if (existingAppIds.Contains(clientProfile.AppID))
                 {
                     _logger.LogInformation("Bỏ qua profile từ client vì AppID đã tồn tại: {AppID}", clientProfile.AppID);
                     return Ok(new
@@ -156,6 +233,38 @@ namespace SteamCmdWeb.Controllers
                         added = false
                     });
                 }
+
+                // Chuyển đổi sang ClientProfile
+                var pendingProfile = new ClientProfile
+                {
+                    Name = clientProfile.Name,
+                    AppID = clientProfile.AppID,
+                    InstallDirectory = clientProfile.InstallDirectory,
+                    SteamUsername = clientProfile.SteamUsername,
+                    SteamPassword = clientProfile.SteamPassword,
+                    Arguments = clientProfile.Arguments,
+                    ValidateFiles = clientProfile.ValidateFiles,
+                    AutoRun = clientProfile.AutoRun,
+                    AnonymousLogin = clientProfile.AnonymousLogin,
+                    Status = "Ready",
+                    StartTime = DateTime.Now,
+                    StopTime = DateTime.Now,
+                    LastRun = DateTime.UtcNow
+                };
+
+                lock (_syncService)
+                {
+                    _syncService.GetPendingProfiles().Add(pendingProfile);
+                }
+
+                _logger.LogInformation("Đã thêm profile {ProfileName} từ client vào danh sách chờ", clientProfile.Name);
+
+                return Ok(new
+                {
+                    success = true,
+                    message = $"Đã thêm profile {clientProfile.Name} vào danh sách chờ",
+                    pending = true
+                });
             }
             catch (Exception ex)
             {

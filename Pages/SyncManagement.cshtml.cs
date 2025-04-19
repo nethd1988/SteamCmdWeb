@@ -22,6 +22,7 @@ namespace SteamCmdWeb.Pages
         public bool IsSuccess { get; set; }
 
         public List<SyncResult> SyncResults { get; set; } = new List<SyncResult>();
+        public List<ClientProfile> PendingProfiles { get; set; } = new List<ClientProfile>();
 
         public SyncManagementModel(
             ILogger<SyncManagementModel> logger,
@@ -37,6 +38,12 @@ namespace SteamCmdWeb.Pages
             {
                 // Lấy kết quả đồng bộ gần đây
                 SyncResults = _syncService.GetSyncResults();
+
+                // Lấy danh sách profile đang chờ
+                PendingProfiles = _syncService.GetPendingProfiles();
+
+                _logger.LogInformation("Đã tải trang quản lý đồng bộ với {ResultCount} kết quả và {PendingCount} profile đang chờ",
+                    SyncResults.Count, PendingProfiles.Count);
             }
             catch (Exception ex)
             {
@@ -50,10 +57,9 @@ namespace SteamCmdWeb.Pages
         {
             try
             {
-                // Sử dụng phương thức tìm kiếm trên mạng rộng thay vì chỉ mạng cục bộ
                 await _syncService.DiscoverAndSyncClientsAsync();
 
-                StatusMessage = "Đã tìm kiếm và đồng bộ với các client SteamCmdWebAPI từ xa";
+                StatusMessage = "Đã tìm kiếm và đồng bộ với các client SteamCmdWebAPI trên mạng";
                 IsSuccess = true;
 
                 return RedirectToPage();
@@ -85,7 +91,7 @@ namespace SteamCmdWeb.Pages
                     }
                 }
 
-                StatusMessage = $"Đồng bộ hoàn tất. Thành công: {successCount}/{results.Count} clients, thêm {totalNewProfiles} profiles mới.";
+                StatusMessage = $"Đồng bộ hoàn tất. Thành công: {successCount}/{results.Count} clients, thêm {totalNewProfiles} profiles vào danh sách chờ.";
                 IsSuccess = true;
 
                 return RedirectToPage();
@@ -94,6 +100,94 @@ namespace SteamCmdWeb.Pages
             {
                 _logger.LogError(ex, "Lỗi khi đồng bộ từ các client đã biết");
                 StatusMessage = "Đã xảy ra lỗi khi đồng bộ từ các client đã biết: " + ex.Message;
+                IsSuccess = false;
+                return RedirectToPage();
+            }
+        }
+
+        public async Task<IActionResult> OnPostConfirmAsync(int index)
+        {
+            try
+            {
+                bool success = await _syncService.ConfirmProfileAsync(index);
+                if (success)
+                {
+                    StatusMessage = "Đã xác nhận và thêm profile vào hệ thống";
+                    IsSuccess = true;
+                }
+                else
+                {
+                    StatusMessage = "Không tìm thấy profile đã chọn trong danh sách chờ";
+                    IsSuccess = false;
+                }
+                return RedirectToPage();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi xác nhận profile");
+                StatusMessage = "Đã xảy ra lỗi khi xác nhận profile: " + ex.Message;
+                IsSuccess = false;
+                return RedirectToPage();
+            }
+        }
+
+        public IActionResult OnPostRejectAsync(int index)
+        {
+            try
+            {
+                bool success = _syncService.RejectProfile(index);
+                if (success)
+                {
+                    StatusMessage = "Đã từ chối profile";
+                    IsSuccess = true;
+                }
+                else
+                {
+                    StatusMessage = "Không tìm thấy profile đã chọn trong danh sách chờ";
+                    IsSuccess = false;
+                }
+                return RedirectToPage();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi từ chối profile");
+                StatusMessage = "Đã xảy ra lỗi khi từ chối profile: " + ex.Message;
+                IsSuccess = false;
+                return RedirectToPage();
+            }
+        }
+
+        public async Task<IActionResult> OnPostConfirmAllAsync()
+        {
+            try
+            {
+                int count = await _syncService.ConfirmAllPendingProfilesAsync();
+                StatusMessage = $"Đã xác nhận và thêm {count} profile vào hệ thống";
+                IsSuccess = true;
+                return RedirectToPage();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi xác nhận tất cả profile");
+                StatusMessage = "Đã xảy ra lỗi khi xác nhận tất cả profile: " + ex.Message;
+                IsSuccess = false;
+                return RedirectToPage();
+            }
+        }
+
+        public IActionResult OnPostRejectAllAsync()
+        {
+            try
+            {
+                int count = _syncService.RejectAllPendingProfiles();
+                StatusMessage = $"Đã từ chối {count} profile";
+                IsSuccess = true;
+                return RedirectToPage();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi từ chối tất cả profile");
+                StatusMessage = "Đã xảy ra lỗi khi từ chối tất cả profile: " + ex.Message;
                 IsSuccess = false;
                 return RedirectToPage();
             }

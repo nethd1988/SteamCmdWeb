@@ -8,8 +8,8 @@
     <h1>Quản lý đồng bộ Client</h1>
 
     <div class="alert alert-info">
-        <h5><i class="bi bi-info-circle me-2"></i>Tính năng đồng bộ tự động</h5>
-        <p>Hệ thống sẽ tự động quét mạng và đồng bộ với tất cả client mỗi 30 phút. Chỉ các profile có App ID chưa tồn tại trên server sẽ được thêm vào.</p>
+        <h5><i class="bi bi-info-circle me-2"></i>Tính năng đồng bộ thông minh</h5>
+        <p>Hệ thống sẽ tự động quét mạng và đồng bộ với tất cả client mỗi 30 phút. Các profile đồng bộ sẽ được đưa vào danh sách chờ, bạn cần xác nhận trước khi thêm vào hệ thống.</p>
     </div>
 
     @if (!string.IsNullOrEmpty(Model.StatusMessage))
@@ -44,6 +44,92 @@
                     </button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- Danh sách profile đang chờ xác nhận -->
+    <div class="card mb-4">
+        <div class="card-header bg-warning text-dark">
+            <div class="d-flex justify-content-between align-items-center">
+                <h5><i class="bi bi-hourglass-split me-2"></i> Profile đang chờ xác nhận (@Model.PendingProfiles.Count)</h5>
+                <div>
+                    @if (Model.PendingProfiles.Count > 0)
+                    {
+                        <form method="post" asp-page-handler="ConfirmAll" class="d-inline">
+                            <button type="submit" class="btn btn-success btn-sm">
+                                <i class="bi bi-check-all me-1"></i> Xác nhận tất cả
+                            </button>
+                        </form>
+                        <form method="post" asp-page-handler="RejectAll" class="d-inline">
+                            <button type="submit" class="btn btn-danger btn-sm">
+                                <i class="bi bi-x-lg me-1"></i> Từ chối tất cả
+                            </button>
+                        </form>
+                    }
+                    <button type="button" class="btn btn-primary btn-sm" id="refreshPendingBtn">
+                        <i class="bi bi-arrow-clockwise me-1"></i> Làm mới
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover table-striped mb-0">
+                    <thead>
+                        <tr>
+                            <th>Tên</th>
+                            <th>App ID</th>
+                            <th>Thư mục cài đặt</th>
+                            <th>Loại đăng nhập</th>
+                            <th>Thao tác</th>
+                        </tr>
+                    </thead>
+                    <tbody id="pendingProfilesTableBody">
+                        @if (Model.PendingProfiles.Count == 0)
+                        {
+                            <tr>
+                                <td colspan="5" class="text-center">Không có profile nào đang chờ xác nhận</td>
+                            </tr>
+                        }
+                        else
+                        {
+                            @for (int i = 0; i < Model.PendingProfiles.Count; i++)
+                            {
+                                var profile = Model.PendingProfiles[i];
+                                <tr>
+                                    <td>@profile.Name</td>
+                                    <td>@profile.AppID</td>
+                                    <td class="text-truncate" style="max-width: 200px;">@profile.InstallDirectory</td>
+                                    <td>
+                                        @if (profile.AnonymousLogin)
+                                        {
+                                            <span class="badge bg-secondary">Ẩn danh</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-info">Tài khoản</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        <form method="post" asp-page-handler="Confirm" class="d-inline">
+                                            <input type="hidden" name="index" value="@i" />
+                                            <button type="submit" class="btn btn-success btn-sm">
+                                                <i class="bi bi-check-lg"></i> Xác nhận
+                                            </button>
+                                        </form>
+                                        <form method="post" asp-page-handler="Reject" class="d-inline">
+                                            <input type="hidden" name="index" value="@i" />
+                                            <button type="submit" class="btn btn-danger btn-sm">
+                                                <i class="bi bi-x-lg"></i> Từ chối
+                                            </button>
+                                        </form>
+                                    </td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
 
@@ -103,3 +189,14 @@
         </div>
     </div>
 </div>
+
+@section Scripts {
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Nút làm mới danh sách chờ
+            document.getElementById('refreshPendingBtn').addEventListener('click', function() {
+                window.location.reload();
+            });
+        });
+    </script>
+}
