@@ -2,7 +2,6 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using SteamCmdWeb.Models;
 using SteamCmdWeb.Services;
-using SteamCmdWebAPI.Models;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -34,11 +33,28 @@ namespace SteamCmdWeb.Controllers
             try
             {
                 var pendingProfiles = _syncService.GetPendingProfiles();
+
+                // Không gửi mật khẩu đã mã hóa cho client
+                var sanitizedProfiles = pendingProfiles.Select(p => new
+                {
+                    p.Id,
+                    p.Name,
+                    p.AppID,
+                    p.InstallDirectory,
+                    p.Arguments,
+                    p.ValidateFiles,
+                    p.AutoRun,
+                    p.AnonymousLogin,
+                    SteamUsername = p.AnonymousLogin ? "" : "***",
+                    SteamPassword = p.AnonymousLogin ? "" : "***",
+                    p.Status
+                }).ToList();
+
                 return Ok(new
                 {
                     success = true,
                     count = pendingProfiles.Count,
-                    profiles = pendingProfiles
+                    profiles = sanitizedProfiles
                 });
             }
             catch (Exception ex)
@@ -49,7 +65,7 @@ namespace SteamCmdWeb.Controllers
         }
 
         [HttpPost("profiles")]
-        public IActionResult SyncProfiles([FromBody] List<SteamCmdWebAPI.Models.SteamCmdProfile> clientProfiles)
+        public IActionResult SyncProfiles([FromBody] List<dynamic> clientProfiles)
         {
             if (clientProfiles == null || !clientProfiles.Any())
             {
@@ -65,26 +81,44 @@ namespace SteamCmdWeb.Controllers
 
                 foreach (var clientProfile in clientProfiles)
                 {
-                    // Chuyển đổi sang ClientProfile và thêm vào danh sách chờ
-                    var pendingProfile = new ClientProfile
+                    try
                     {
-                        Name = clientProfile.Name,
-                        AppID = clientProfile.AppID,
-                        InstallDirectory = clientProfile.InstallDirectory,
-                        SteamUsername = clientProfile.SteamUsername,
-                        SteamPassword = clientProfile.SteamPassword,
-                        Arguments = clientProfile.Arguments,
-                        ValidateFiles = clientProfile.ValidateFiles,
-                        AutoRun = clientProfile.AutoRun,
-                        AnonymousLogin = clientProfile.AnonymousLogin,
-                        Status = "Ready",
-                        StartTime = DateTime.Now,
-                        StopTime = DateTime.Now,
-                        LastRun = DateTime.UtcNow
-                    };
+                        // Trích xuất thông tin từ dynamic object
+                        string name = clientProfile.Name?.ToString() ?? "Unnamed Profile";
+                        string appId = clientProfile.AppID?.ToString() ?? "";
+                        string installDir = clientProfile.InstallDirectory?.ToString() ?? "";
+                        string steamUsername = clientProfile.SteamUsername?.ToString() ?? "";
+                        string steamPassword = clientProfile.SteamPassword?.ToString() ?? "";
+                        string arguments = clientProfile.Arguments?.ToString() ?? "";
+                        bool validateFiles = clientProfile.ValidateFiles != null && Convert.ToBoolean(clientProfile.ValidateFiles);
+                        bool autoRun = clientProfile.AutoRun != null && Convert.ToBoolean(clientProfile.AutoRun);
+                        bool anonymousLogin = clientProfile.AnonymousLogin != null && Convert.ToBoolean(clientProfile.AnonymousLogin);
 
-                    _syncService.AddPendingProfile(pendingProfile);
-                    pendingCount++;
+                        // Chuyển đổi sang ClientProfile và thêm vào danh sách chờ
+                        var pendingProfile = new ClientProfile
+                        {
+                            Name = name,
+                            AppID = appId,
+                            InstallDirectory = installDir,
+                            SteamUsername = steamUsername,
+                            SteamPassword = steamPassword,
+                            Arguments = arguments,
+                            ValidateFiles = validateFiles,
+                            AutoRun = autoRun,
+                            AnonymousLogin = anonymousLogin,
+                            Status = "Ready",
+                            StartTime = DateTime.Now,
+                            StopTime = DateTime.Now,
+                            LastRun = DateTime.UtcNow
+                        };
+
+                        _syncService.AddPendingProfile(pendingProfile);
+                        pendingCount++;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Lỗi khi xử lý profile từ client");
+                    }
                 }
 
                 _logger.LogInformation("Đồng bộ hoàn tất. Đã thêm: {Added} vào danh sách chờ", pendingCount);
@@ -105,7 +139,7 @@ namespace SteamCmdWeb.Controllers
         }
 
         [HttpPost("profile")]
-        public IActionResult SyncProfile([FromBody] SteamCmdWebAPI.Models.SteamCmdProfile clientProfile)
+        public IActionResult SyncProfile([FromBody] dynamic clientProfile)
         {
             if (clientProfile == null)
             {
@@ -113,28 +147,38 @@ namespace SteamCmdWeb.Controllers
             }
 
             string clientIp = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-            _logger.LogInformation("Nhận yêu cầu đồng bộ profile từ {ClientIp}: {ProfileName}", clientIp, clientProfile.Name);
 
             try
             {
+                // Trích xuất thông tin từ dynamic object
+                string name = clientProfile.Name?.ToString() ?? "Unnamed Profile";
+                string appId = clientProfile.AppID?.ToString() ?? "";
+                string installDir = clientProfile.InstallDirectory?.ToString() ?? "";
+                string steamUsername = clientProfile.SteamUsername?.ToString() ?? "";
+                string steamPassword = clientProfile.SteamPassword?.ToString() ?? "";
+                string arguments = clientProfile.Arguments?.ToString() ?? "";
+                bool validateFiles = clientProfile.ValidateFiles != null && Convert.ToBoolean(clientProfile.ValidateFiles);
+                bool autoRun = clientProfile.AutoRun != null && Convert.ToBoolean(clientProfile.AutoRun);
+                bool anonymousLogin = clientProfile.AnonymousLogin != null && Convert.ToBoolean(clientProfile.AnonymousLogin);
+
+                _logger.LogInformation("Nhận yêu cầu đồng bộ profile từ {ClientIp}: {ProfileName}", clientIp, name);
+
                 // Log chi tiết thông tin nhận được
-                _logger.LogInformation("Thông tin profile nhận được: Name={Name}, AppID={AppID}, Username={Username}, Password={Password}, Anonymous={Anonymous}",
-                    clientProfile.Name, clientProfile.AppID,
-                    clientProfile.SteamUsername, clientProfile.SteamPassword,
-                    clientProfile.AnonymousLogin);
+                _logger.LogInformation("Thông tin profile nhận được: Name={Name}, AppID={AppID}, Username={Username}, Anonymous={Anonymous}",
+                    name, appId, steamUsername, anonymousLogin);
 
                 // Chuyển đổi sang ClientProfile
                 var pendingProfile = new ClientProfile
                 {
-                    Name = clientProfile.Name ?? "Unnamed Profile",
-                    AppID = clientProfile.AppID ?? "",
-                    InstallDirectory = clientProfile.InstallDirectory ?? "",
-                    SteamUsername = clientProfile.SteamUsername ?? "",
-                    SteamPassword = clientProfile.SteamPassword ?? "",
-                    Arguments = clientProfile.Arguments ?? "",
-                    ValidateFiles = clientProfile.ValidateFiles,
-                    AutoRun = clientProfile.AutoRun,
-                    AnonymousLogin = clientProfile.AnonymousLogin,
+                    Name = name,
+                    AppID = appId,
+                    InstallDirectory = installDir,
+                    SteamUsername = steamUsername,
+                    SteamPassword = steamPassword,
+                    Arguments = arguments,
+                    ValidateFiles = validateFiles,
+                    AutoRun = autoRun,
+                    AnonymousLogin = anonymousLogin,
                     Status = "Ready",
                     StartTime = DateTime.Now,
                     StopTime = DateTime.Now,
@@ -143,13 +187,12 @@ namespace SteamCmdWeb.Controllers
 
                 _syncService.AddPendingProfile(pendingProfile);
 
-                _logger.LogInformation("Đã thêm profile {ProfileName} từ client vào danh sách chờ với thông tin đăng nhập: {Username}/{Password}",
-                    pendingProfile.Name, pendingProfile.SteamUsername, pendingProfile.SteamPassword);
+                _logger.LogInformation("Đã thêm profile {ProfileName} từ client vào danh sách chờ", name);
 
                 return Ok(new
                 {
                     success = true,
-                    message = $"Đã thêm profile {clientProfile.Name} vào danh sách chờ",
+                    message = $"Đã thêm profile {name} vào danh sách chờ",
                     pending = true
                 });
             }
