@@ -4,9 +4,8 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.Logging;
-using SteamCmdWeb.Services;
 using SteamCmdWeb.Models;
-using System.Linq;
+using SteamCmdWeb.Services;
 
 namespace SteamCmdWeb.Pages
 {
@@ -39,18 +38,24 @@ namespace SteamCmdWeb.Pages
             try
             {
                 // Lấy danh sách profile đang chờ
-                PendingProfiles = new List<ClientProfile>(_syncService.GetPendingProfiles());
+                PendingProfiles = _syncService.GetPendingProfiles();
 
-                // Giải mã thông tin đăng nhập
+                // Giải mã thông tin đăng nhập cho tất cả các profile
+                // Chú ý: Thông tin đã được giải mã lưu trực tiếp vào đối tượng profile
+                // để đảm bảo luôn hiển thị ngay cả khi làm mới trang
                 foreach (var profile in PendingProfiles)
                 {
                     if (!profile.AnonymousLogin)
                     {
+                        // Chỉ giải mã nếu chưa được giải mã (kiểm tra xem có phải chuỗi base64 không)
                         if (!string.IsNullOrEmpty(profile.SteamUsername))
                         {
                             try
                             {
-                                profile.SteamUsername = _decryptionService.DecryptString(profile.SteamUsername);
+                                if (IsBase64String(profile.SteamUsername))
+                                {
+                                    profile.SteamUsername = _decryptionService.DecryptString(profile.SteamUsername);
+                                }
                             }
                             catch (Exception ex)
                             {
@@ -62,7 +67,10 @@ namespace SteamCmdWeb.Pages
                         {
                             try
                             {
-                                profile.SteamPassword = _decryptionService.DecryptString(profile.SteamPassword);
+                                if (IsBase64String(profile.SteamPassword))
+                                {
+                                    profile.SteamPassword = _decryptionService.DecryptString(profile.SteamPassword);
+                                }
                             }
                             catch (Exception ex)
                             {
@@ -80,6 +88,16 @@ namespace SteamCmdWeb.Pages
                 StatusMessage = "Đã xảy ra lỗi khi tải trang: " + ex.Message;
                 IsSuccess = false;
             }
+        }
+
+        // Hàm kiểm tra chuỗi có phải base64 không
+        private bool IsBase64String(string s)
+        {
+            if (string.IsNullOrWhiteSpace(s))
+                return false;
+
+            s = s.Trim();
+            return (s.Length % 4 == 0) && System.Text.RegularExpressions.Regex.IsMatch(s, @"^[a-zA-Z0-9\+/]*={0,3}$", System.Text.RegularExpressions.RegexOptions.None);
         }
 
         public async Task<IActionResult> OnPostConfirmAsync(int index)
