@@ -1,16 +1,11 @@
 @page
 @model SteamCmdWeb.Pages.SyncManagementModel
 @{
-    ViewData["Title"] = "Quản lý đồng bộ";
+    ViewData["Title"] = "Profiles đang chờ xác nhận";
 }
 
 <div class="container">
-    <h1>Quản lý đồng bộ Client</h1>
-
-    <div class="alert alert-info">
-        <h5><i class="bi bi-info-circle me-2"></i>Tính năng đồng bộ thông minh</h5>
-        <p>Hệ thống sẽ tự động quét mạng và đồng bộ với tất cả client mỗi 30 phút. Các profile đồng bộ sẽ được đưa vào danh sách chờ, bạn cần xác nhận trước khi thêm vào hệ thống.</p>
-    </div>
+    <h1>Quản lý profile đang chờ xác nhận</h1>
 
     @if (!string.IsNullOrEmpty(Model.StatusMessage))
     {
@@ -19,33 +14,6 @@
             <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
         </div>
     }
-
-    <div class="card mb-4">
-        <div class="card-header bg-primary text-white">
-            <h5><i class="bi bi-search me-2"></i> Tìm kiếm client</h5>
-        </div>
-        <div class="card-body">
-            <form method="post" asp-page-handler="ScanNetwork">
-                <div class="mb-3">
-                    <p>Quét mạng cục bộ để tìm các client đang chạy và đồng bộ tự động với chúng.</p>
-                    <button type="submit" class="btn btn-primary">
-                        <i class="bi bi-search me-1"></i> Quét mạng ngay
-                    </button>
-                </div>
-            </form>
-
-            <hr />
-
-            <form method="post" asp-page-handler="SyncKnownClients">
-                <div class="mb-3">
-                    <p>Đồng bộ với tất cả client đã biết.</p>
-                    <button type="submit" class="btn btn-success">
-                        <i class="bi bi-cloud-download me-1"></i> Đồng bộ tất cả client đã biết
-                    </button>
-                </div>
-            </form>
-        </div>
-    </div>
 
     <!-- Danh sách profile đang chờ xác nhận -->
     <div class="card mb-4">
@@ -108,8 +76,8 @@
                                         else
                                         {
                                             <div>
-                                                <strong>Tài khoản:</strong> @profile.SteamUsername<br />
-                                                <strong>Mật khẩu:</strong> @profile.SteamPassword
+                                                <strong>Tài khoản:</strong> @(string.IsNullOrEmpty(profile.SteamUsername) ? "Không có" : profile.SteamUsername)<br />
+                                                <strong>Mật khẩu:</strong> @(string.IsNullOrEmpty(profile.SteamPassword) ? "Không có" : profile.SteamPassword)
                                             </div>
                                         }
                                     </td>
@@ -127,62 +95,6 @@
                                             </button>
                                         </form>
                                     </td>
-                                </tr>
-                            }
-                        }
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-
-    <!-- Kết quả đồng bộ gần đây -->
-    <div class="card">
-        <div class="card-header bg-info text-white">
-            <h5><i class="bi bi-clock-history me-2"></i> Kết quả đồng bộ gần đây</h5>
-        </div>
-        <div class="card-body p-0">
-            <div class="table-responsive">
-                <table class="table table-hover table-striped">
-                    <thead>
-                        <tr>
-                            <th>Thời gian</th>
-                            <th>Client</th>
-                            <th>Trạng thái</th>
-                            <th>Tổng số</th>
-                            <th>Profiles mới</th>
-                            <th>Lọc bỏ</th>
-                            <th>Thông báo</th>
-                        </tr>
-                    </thead>
-                    <tbody id="syncResultsTableBody">
-                        @if (Model.SyncResults.Count == 0)
-                        {
-                            <tr>
-                                <td colspan="7" class="text-center">Chưa có kết quả đồng bộ nào</td>
-                            </tr>
-                        }
-                        else
-                        {
-                            @foreach (var result in Model.SyncResults)
-                            {
-                                <tr>
-                                    <td>@result.Timestamp.ToString("dd/MM/yyyy HH:mm:ss")</td>
-                                    <td>@result.ClientId</td>
-                                    <td>
-                                        @if (result.Success)
-                                        {
-                                            <span class="badge bg-success">Thành công</span>
-                                        }
-                                        else
-                                        {
-                                            <span class="badge bg-danger">Lỗi</span>
-                                        }
-                                    </td>
-                                    <td>@result.TotalProfiles</td>
-                                    <td>@result.NewProfilesAdded</td>
-                                    <td>@result.FilteredProfiles</td>
-                                    <td>@result.Message</td>
                                 </tr>
                             }
                         }

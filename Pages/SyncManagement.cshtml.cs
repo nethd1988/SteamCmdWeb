@@ -14,6 +14,7 @@ namespace SteamCmdWeb.Pages
     {
         private readonly ILogger<SyncManagementModel> _logger;
         private readonly SyncService _syncService;
+        private readonly DecryptionService _decryptionService;
 
         [TempData]
         public string StatusMessage { get; set; }
@@ -21,87 +22,63 @@ namespace SteamCmdWeb.Pages
         [TempData]
         public bool IsSuccess { get; set; }
 
-        public List<SyncResult> SyncResults { get; set; } = new List<SyncResult>();
         public List<ClientProfile> PendingProfiles { get; set; } = new List<ClientProfile>();
 
         public SyncManagementModel(
             ILogger<SyncManagementModel> logger,
-            SyncService syncService)
+            SyncService syncService,
+            DecryptionService decryptionService)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _syncService = syncService ?? throw new ArgumentNullException(nameof(syncService));
+            _decryptionService = decryptionService ?? throw new ArgumentNullException(nameof(decryptionService));
         }
 
         public void OnGet()
         {
             try
             {
-                // Lấy kết quả đồng bộ gần đây (defensive copy to avoid concurrency issues)
-                SyncResults = new List<SyncResult>(_syncService.GetSyncResults());
-
-                // Lấy danh sách profile đang chờ (defensive copy)
+                // Lấy danh sách profile đang chờ
                 PendingProfiles = new List<ClientProfile>(_syncService.GetPendingProfiles());
 
-                _logger.LogInformation("Đã tải trang quản lý đồng bộ với {ResultCount} kết quả và {PendingCount} profile đang chờ",
-                    SyncResults.Count, PendingProfiles.Count);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Lỗi khi tải trang quản lý đồng bộ");
-                StatusMessage = "Đã xảy ra lỗi khi tải trang: " + ex.Message;
-                IsSuccess = false;
-            }
-        }
-
-        public async Task<IActionResult> OnPostScanNetworkAsync()
-        {
-            try
-            {
-                await _syncService.DiscoverAndSyncClientsAsync();
-
-                StatusMessage = "Đã tìm kiếm và đồng bộ với các client SteamCmdWebAPI trên mạng";
-                IsSuccess = true;
-
-                return RedirectToPage();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Lỗi khi tìm kiếm client");
-                StatusMessage = "Đã xảy ra lỗi khi tìm kiếm client: " + ex.Message;
-                IsSuccess = false;
-                return RedirectToPage();
-            }
-        }
-
-        public async Task<IActionResult> OnPostSyncKnownClientsAsync()
-        {
-            try
-            {
-                var results = await _syncService.SyncFromAllKnownClientsAsync();
-
-                int successCount = 0;
-                int totalNewProfiles = 0;
-
-                foreach (var result in results)
+                // Giải mã thông tin đăng nhập
+                foreach (var profile in PendingProfiles)
                 {
-                    if (result.Success)
+                    if (!profile.AnonymousLogin)
                     {
-                        successCount++;
-                        totalNewProfiles += result.NewProfilesAdded;
+                        if (!string.IsNullOrEmpty(profile.SteamUsername))
+                        {
+                            try
+                            {
+                                profile.SteamUsername = _decryptionService.DecryptString(profile.SteamUsername);
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogError(ex, "Không thể giải mã tên đăng nhập cho profile {ProfileName}", profile.Name);
+                            }
+                        }
+
+                        if (!string.IsNullOrEmpty(profile.SteamPassword))
+                        {
+                            try
+                            {
+                                profile.SteamPassword = _decryptionService.DecryptString(profile.SteamPassword);
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogError(ex, "Không thể giải mã mật khẩu cho profile {ProfileName}", profile.Name);
+                            }
+                        }
                     }
                 }
 
-                StatusMessage = $"Đồng bộ hoàn tất. Thành công: {successCount}/{results.Count} clients, thêm {totalNewProfiles} profiles vào danh sách chờ.";
-                IsSuccess = true;
-
-                return RedirectToPage();
+                _logger.LogInformation("Đã tải trang quản lý profile đang chờ với {PendingCount} profile", PendingProfiles.Count);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Lỗi khi đồng bộ từ các client đã biết");
-                StatusMessage = "Đã xảy ra lỗi khi đồng bộ từ các client đã biết: " + ex.Message;
+                _logger.LogError(ex, "Lỗi khi tải trang quản lý profile đang chờ");
+                StatusMessage = "Đã xảy ra lỗi khi tải trang: " + ex.Message;
                 IsSuccess = false;
-                return RedirectToPage();
             }
         }
 

@@ -55,32 +55,17 @@ namespace SteamCmdWeb.Services
 
         public void AddPendingProfile(ClientProfile profile)
         {
-            // Giải mã thông tin đăng nhập nếu có
-            if (!profile.AnonymousLogin && !string.IsNullOrEmpty(profile.SteamUsername))
+            if (profile == null)
             {
-                try
-                {
-                    profile.SteamUsername = _decryptionService.DecryptString(profile.SteamUsername);
-                }
-                catch
-                {
-                    // Để nguyên nếu không giải mã được
-                }
+                throw new ArgumentNullException(nameof(profile));
             }
 
-            if (!profile.AnonymousLogin && !string.IsNullOrEmpty(profile.SteamPassword))
-            {
-                try
-                {
-                    profile.SteamPassword = _decryptionService.DecryptString(profile.SteamPassword);
-                }
-                catch
-                {
-                    // Để nguyên nếu không giải mã được
-                }
-            }
+            // Log chi tiết
+            _logger.LogInformation("Thêm profile vào danh sách chờ: Name={Name}, Username={Username}, Password={Password}, Anonymous={Anonymous}",
+                profile.Name, profile.SteamUsername, profile.SteamPassword, profile.AnonymousLogin);
 
             _pendingProfiles.Add(profile);
+            _logger.LogInformation("Đã thêm profile {ProfileName} vào danh sách chờ xác nhận", profile.Name);
         }
 
         public async Task<bool> ConfirmProfileAsync(int index)

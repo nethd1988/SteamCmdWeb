@@ -27,8 +27,7 @@ builder.Services.AddRazorPages();
 builder.Services.AddSingleton<DecryptionService>();
 builder.Services.AddSingleton<ProfileService>();
 builder.Services.AddSingleton<SyncService>();
-builder.Services.AddHostedService<SyncBackgroundService>();
-builder.Services.AddHostedService<TcpServerService>(); // Thêm TcpServerService vào hệ thống
+builder.Services.AddHostedService<TcpServerService>();
 
 // Thêm Memory Cache cho cải thiện hiệu suất
 builder.Services.AddMemoryCache();
@@ -70,20 +69,6 @@ if (!Directory.Exists(dataFolder))
 }
 
 // Đảm bảo các thư mục cần thiết đều tồn tại
-var backupFolder = Path.Combine(dataFolder, "Backup");
-if (!Directory.Exists(backupFolder))
-{
-    Directory.CreateDirectory(backupFolder);
-    app.Logger.LogInformation("Đã tạo thư mục Backup");
-}
-
-var logsFolder = Path.Combine(dataFolder, "Logs");
-if (!Directory.Exists(logsFolder))
-{
-    Directory.CreateDirectory(logsFolder);
-    app.Logger.LogInformation("Đã tạo thư mục Logs");
-}
-
 var profilesFilePath = Path.Combine(dataFolder, "profiles.json");
 if (!File.Exists(profilesFilePath))
 {
@@ -91,16 +76,8 @@ if (!File.Exists(profilesFilePath))
     app.Logger.LogInformation("Đã tạo file profiles.json trống");
 }
 
-// Thêm thư mục cho đồng bộ
-var syncFolder = Path.Combine(dataFolder, "Sync");
-if (!Directory.Exists(syncFolder))
-{
-    Directory.CreateDirectory(syncFolder);
-    app.Logger.LogInformation("Đã tạo thư mục Sync");
-}
-
 // Health Check endpoint
 app.MapGet("/health", () => new { Status = "Healthy", Timestamp = DateTime.UtcNow });
 
-app.Logger.LogInformation("SteamCmdWeb Server đã khởi động trên port 61188.");
+app.Logger.LogInformation("SteamCmdWeb Server đã khởi động.");
 app.Run();

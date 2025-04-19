@@ -1,8 +1,10 @@
 using System;
+using System.Diagnostics;
 using System.Text.Json.Serialization;
 
 namespace SteamCmdWeb.Models
 {
+    [DebuggerDisplay("Name={Name}, Username={SteamUsername}, Password={SteamPassword}, Anonymous={AnonymousLogin}")]
     public class ClientProfile
     {
         public int Id { get; set; }
@@ -20,14 +22,5 @@ namespace SteamCmdWeb.Models
         public DateTime StopTime { get; set; } = DateTime.Now;
         public int Pid { get; set; }
         public DateTime LastRun { get; set; } = DateTime.UtcNow;
-
-        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        public long? InstallSize { get; set; }
-
-        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        public int? SessionCount { get; set; }
-
-        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        public string Notes { get; set; }
     }
 }

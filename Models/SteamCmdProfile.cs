@@ -1,4 +1,7 @@
-﻿namespace SteamCmdWebAPI.Models
+﻿using System;
+using System.Text.Json.Serialization;
+
+namespace SteamCmdWebAPI.Models
 {
     public class SteamCmdProfile
     {
@@ -13,10 +16,10 @@
         public bool AutoRun { get; set; }
         public bool AnonymousLogin { get; set; }
         public string Status { get; set; }
-        public System.DateTime StartTime { get; set; }
-        public System.DateTime StopTime { get; set; }
+        public DateTime StartTime { get; set; }
+        public DateTime StopTime { get; set; }
         public int Pid { get; set; }
-        public System.DateTime? LastRun { get; set; }
+        public DateTime? LastRun { get; set; }
 
         public SteamCmdProfile()
         {
