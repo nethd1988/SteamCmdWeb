@@ -58,21 +58,50 @@ namespace SteamCmdWeb.Services
         public async Task<ClientProfile> GetDecryptedProfileByIdAsync(int id)
         {
             var profile = await GetProfileByIdAsync(id);
+            if (profile == null) return null;
 
-            if (profile != null && !profile.AnonymousLogin)
+            // Tạo bản sao để không ảnh hưởng đến dữ liệu gốc
+            var decryptedProfile = new ClientProfile
             {
-                if (!string.IsNullOrEmpty(profile.SteamUsername))
-                {
-                    profile.SteamUsername = _decryptionService.DecryptString(profile.SteamUsername);
-                }
+                Id = profile.Id,
+                Name = profile.Name,
+                AppID = profile.AppID,
+                InstallDirectory = profile.InstallDirectory,
+                Arguments = profile.Arguments,
+                ValidateFiles = profile.ValidateFiles,
+                AutoRun = profile.AutoRun,
+                AnonymousLogin = profile.AnonymousLogin,
+                Status = profile.Status,
+                StartTime = profile.StartTime,
+                StopTime = profile.StopTime,
+                Pid = profile.Pid,
+                LastRun = profile.LastRun
+            };
 
-                if (!string.IsNullOrEmpty(profile.SteamPassword))
+            // Giải mã thông tin đăng nhập nếu không phải anonymous
+            if (!profile.AnonymousLogin)
+            {
+                try
                 {
-                    profile.SteamPassword = _decryptionService.DecryptString(profile.SteamPassword);
+                    if (!string.IsNullOrEmpty(profile.SteamUsername))
+                    {
+                        decryptedProfile.SteamUsername = _decryptionService.DecryptString(profile.SteamUsername);
+                    }
+
+                    if (!string.IsNullOrEmpty(profile.SteamPassword))
+                    {
+                        decryptedProfile.SteamPassword = _decryptionService.DecryptString(profile.SteamPassword);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Lỗi khi giải mã thông tin đăng nhập cho profile {ProfileId}", profile.Id);
+                    decryptedProfile.SteamUsername = "[Lỗi giải mã]";
+                    decryptedProfile.SteamPassword = "[Lỗi giải mã]";
                 }
             }
 
-            return profile;
+            return decryptedProfile;
         }
 
         public async Task<ClientProfile> AddProfileAsync(ClientProfile profile)

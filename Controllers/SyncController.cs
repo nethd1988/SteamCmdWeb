@@ -97,5 +97,71 @@ namespace SteamCmdWeb.Controllers
                 return StatusCode(500, new { success = false, message = $"Lỗi: {ex.Message}" });
             }
         }
+
+        [HttpPost("profile")]
+        public async Task<IActionResult> SyncProfile([FromBody] SteamCmdProfile clientProfile)
+        {
+            if (clientProfile == null)
+            {
+                return BadRequest(new { success = false, message = "Không có profile để đồng bộ" });
+            }
+
+            string clientIp = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+            _logger.LogInformation("Nhận yêu cầu đồng bộ profile từ {ClientIp}: {ProfileName}", clientIp, clientProfile.Name);
+
+            try
+            {
+                var existingProfiles = await _profileService.GetAllProfilesAsync();
+                var existingAppIds = existingProfiles.Select(p => p.AppID).ToHashSet();
+
+                // Kiểm tra AppID đã tồn tại chưa
+                if (!existingAppIds.Contains(clientProfile.AppID))
+                {
+                    // Chuyển đổi từ SteamCmdProfile sang ClientProfile
+                    var newProfile = new ClientProfile
+                    {
+                        Name = clientProfile.Name,
+                        AppID = clientProfile.AppID,
+                        InstallDirectory = clientProfile.InstallDirectory,
+                        SteamUsername = clientProfile.SteamUsername,
+                        SteamPassword = clientProfile.SteamPassword,
+                        Arguments = clientProfile.Arguments,
+                        ValidateFiles = clientProfile.ValidateFiles,
+                        AutoRun = clientProfile.AutoRun,
+                        AnonymousLogin = clientProfile.AnonymousLogin,
+                        Status = "Ready",
+                        StartTime = DateTime.Now,
+                        StopTime = DateTime.Now,
+                        LastRun = DateTime.UtcNow
+                    };
+
+                    await _profileService.AddProfileAsync(newProfile);
+                    _logger.LogInformation("Đã thêm profile mới từ client: {ProfileName}, AppID: {AppID}",
+                        clientProfile.Name, clientProfile.AppID);
+
+                    return Ok(new
+                    {
+                        success = true,
+                        message = $"Đã thêm profile {clientProfile.Name}",
+                        added = true
+                    });
+                }
+                else
+                {
+                    _logger.LogInformation("Bỏ qua profile từ client vì AppID đã tồn tại: {AppID}", clientProfile.AppID);
+                    return Ok(new
+                    {
+                        success = true,
+                        message = $"Bỏ qua profile {clientProfile.Name} vì AppID {clientProfile.AppID} đã tồn tại",
+                        added = false
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi đồng bộ profile từ {ClientIp}", clientIp);
+                return StatusCode(500, new { success = false, message = $"Lỗi: {ex.Message}" });
+            }
+        }
     }
 }
