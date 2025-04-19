@@ -11,7 +11,7 @@ namespace SteamCmdWeb.Services
 
         public DecryptionService()
         {
-            // Khóa mã hóa c? ??nh ?? có th? gi?i mã d? li?u t? client
+            // Khóa mã hóa c? ??nh cho ?ng d?ng
             _encryptionKey = "SteamCmdWebSecureKey123!@#$%";
         }
 
@@ -20,31 +20,29 @@ namespace SteamCmdWeb.Services
             if (string.IsNullOrEmpty(plainText))
                 return string.Empty;
 
-            byte[] iv = new byte[16];
-            byte[] array;
+            // N?u ?ã ???c mã hóa, không mã hóa l?i
+            if (plainText.StartsWith("AES:"))
+                return plainText;
 
-            using (Aes aes = Aes.Create())
+            byte[] clearBytes = Encoding.UTF8.GetBytes(plainText);
+            using (Aes encryptor = Aes.Create())
             {
-                aes.Key = Encoding.UTF8.GetBytes(_encryptionKey.PadRight(32, '#').Substring(0, 32));
-                aes.IV = iv;
+                var pdb = new Rfc2898DeriveBytes(_encryptionKey,
+                    new byte[] { 0x49, 0x76, 0x61, 0x6e, 0x20, 0x4d, 0x65, 0x64, 0x76, 0x65, 0x64, 0x65, 0x76 },
+                    1000);
+                encryptor.Key = pdb.GetBytes(32);
+                encryptor.IV = pdb.GetBytes(16);
 
-                ICryptoTransform encryptor = aes.CreateEncryptor(aes.Key, aes.IV);
-
-                using (MemoryStream memoryStream = new MemoryStream())
+                using (var ms = new MemoryStream())
                 {
-                    using (CryptoStream cryptoStream = new CryptoStream(memoryStream, encryptor, CryptoStreamMode.Write))
+                    using (var cs = new CryptoStream(ms, encryptor.CreateEncryptor(), CryptoStreamMode.Write))
                     {
-                        using (StreamWriter streamWriter = new StreamWriter(cryptoStream))
-                        {
-                            streamWriter.Write(plainText);
-                        }
-
-                        array = memoryStream.ToArray();
+                        cs.Write(clearBytes, 0, clearBytes.Length);
+                        cs.Close();
                     }
+                    return "AES:" + Convert.ToBase64String(ms.ToArray());
                 }
             }
-
-            return Convert.ToBase64String(array);
         }
 
         public string DecryptString(string cipherText)
@@ -52,25 +50,37 @@ namespace SteamCmdWeb.Services
             if (string.IsNullOrEmpty(cipherText))
                 return string.Empty;
 
-            byte[] iv = new byte[16];
-            byte[] buffer = Convert.FromBase64String(cipherText);
+            // Ki?m tra ti?n t? AES:
+            if (cipherText.StartsWith("AES:"))
+                cipherText = cipherText.Substring(4);
+            else
+                return cipherText; // Không ???c mã hóa
 
-            using (Aes aes = Aes.Create())
+            try
             {
-                aes.Key = Encoding.UTF8.GetBytes(_encryptionKey.PadRight(32, '#').Substring(0, 32));
-                aes.IV = iv;
-                ICryptoTransform decryptor = aes.CreateDecryptor(aes.Key, aes.IV);
-
-                using (MemoryStream memoryStream = new MemoryStream(buffer))
+                byte[] cipherBytes = Convert.FromBase64String(cipherText);
+                using (Aes encryptor = Aes.Create())
                 {
-                    using (CryptoStream cryptoStream = new CryptoStream(memoryStream, decryptor, CryptoStreamMode.Read))
+                    var pdb = new Rfc2898DeriveBytes(_encryptionKey,
+                        new byte[] { 0x49, 0x76, 0x61, 0x6e, 0x20, 0x4d, 0x65, 0x64, 0x76, 0x65, 0x64, 0x65, 0x76 },
+                        1000);
+                    encryptor.Key = pdb.GetBytes(32);
+                    encryptor.IV = pdb.GetBytes(16);
+
+                    using (var ms = new MemoryStream())
                     {
-                        using (StreamReader streamReader = new StreamReader(cryptoStream))
+                        using (var cs = new CryptoStream(ms, encryptor.CreateDecryptor(), CryptoStreamMode.Write))
                         {
-                            return streamReader.ReadToEnd();
+                            cs.Write(cipherBytes, 0, cipherBytes.Length);
+                            cs.Close();
                         }
+                        return Encoding.UTF8.GetString(ms.ToArray());
                     }
                 }
+            }
+            catch
+            {
+                return string.Empty; // Tr? v? chu?i r?ng n?u gi?i mã th?t b?i
             }
         }
     }
