@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Hosting;
@@ -10,62 +11,78 @@ namespace SteamCmdWeb.Services
     {
         private readonly ILogger<SyncBackgroundService> _logger;
         private readonly SyncService _syncService;
-
-        // Khoảng thời gian đồng bộ mặc định: 30 phút
         private readonly TimeSpan _syncInterval = TimeSpan.FromMinutes(30);
-        // Khoảng thời gian phát hiện client mới: 6 giờ
-        private readonly TimeSpan _discoverInterval = TimeSpan.FromHours(6);
+        private readonly TimeSpan _scanInterval = TimeSpan.FromHours(2);
+        private DateTime _lastScanTime = DateTime.MinValue;
 
         public SyncBackgroundService(
             ILogger<SyncBackgroundService> logger,
             SyncService syncService)
         {
-            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-            _syncService = syncService ?? throw new ArgumentNullException(nameof(syncService));
+            _logger = logger;
+            _syncService = syncService;
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            _logger.LogInformation("Sync Background Service đã khởi động");
-
-            // Chạy đồng bộ lần đầu sau 1 phút khởi động
-            await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken);
-
-            // Thực hiện phát hiện tự động lần đầu
-            await _syncService.AutoDiscoverAndRegisterClientsAsync();
-
-            // Thực hiện đồng bộ lần đầu
-            await _syncService.AutoSyncAsync();
-
-            DateTime lastDiscoverTime = DateTime.Now;
+            _logger.LogInformation("Dịch vụ đồng bộ nền đã bắt đầu. Sẽ đồng bộ mỗi {Minutes} phút", _syncInterval.TotalMinutes);
 
             while (!stoppingToken.IsCancellationRequested)
             {
                 try
                 {
-                    // Kiểm tra xem có cần phát hiện client mới không
-                    if ((DateTime.Now - lastDiscoverTime) >= _discoverInterval)
+                    // Đợi ngẫu nhiên 0-30 giây khi khởi động để tránh tất cả các server cùng đồng bộ một lúc
+                    if (DateTime.Now.Subtract(Process.GetCurrentProcess().StartTime).TotalMinutes < 5)
                     {
-                        _logger.LogInformation("Đang thực hiện phát hiện tự động client");
-                        await _syncService.AutoDiscoverAndRegisterClientsAsync();
-                        lastDiscoverTime = DateTime.Now;
+                        var random = new Random();
+                        await Task.Delay(TimeSpan.FromSeconds(random.Next(0, 30)), stoppingToken);
                     }
 
-                    // Thực hiện đồng bộ tự động
-                    _logger.LogInformation("Đang thực hiện đồng bộ tự động");
-                    await _syncService.AutoSyncAsync();
+                    // Quét mạng cục bộ theo định kỳ để tìm client mới
+                    if ((DateTime.Now - _lastScanTime) > _scanInterval)
+                    {
+                        _logger.LogInformation("Bắt đầu quét mạng cục bộ để tìm client mới");
+                        await _syncService.ScanLocalNetworkAsync();
+                        _lastScanTime = DateTime.Now;
+                    }
+
+                    // Đồng bộ từ các client đã biết
+                    _logger.LogInformation("Bắt đầu đồng bộ tự động từ tất cả client đã biết");
+                    var results = await _syncService.SyncFromAllKnownClientsAsync();
+
+                    int successCount = 0;
+                    int totalNewProfiles = 0;
+
+                    foreach (var result in results)
+                    {
+                        if (result.Success)
+                        {
+                            successCount++;
+                            totalNewProfiles += result.NewProfilesAdded;
+                        }
+                    }
+
+                    _logger.LogInformation("Đồng bộ tự động hoàn tất. Thành công: {SuccessCount}/{TotalCount} clients, thêm {NewProfiles} profiles mới",
+                        successCount, results.Count, totalNewProfiles);
                 }
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "Lỗi trong quá trình đồng bộ tự động");
                 }
 
-                _logger.LogInformation("Đồng bộ hoàn tất. Đợi {Minutes} phút cho lần tiếp theo",
-                    _syncInterval.TotalMinutes);
-
-                // Đợi đến lần đồng bộ tiếp theo
-                await Task.Delay(_syncInterval, stoppingToken);
+                // Đợi cho đến khi đến lần đồng bộ tiếp theo
+                try
+                {
+                    await Task.Delay(_syncInterval, stoppingToken);
+                }
+                catch (TaskCanceledException)
+                {
+                    // Bỏ qua nếu bị hủy (dịch vụ đang dừng)
+                    break;
+                }
             }
+
+            _logger.LogInformation("Dịch vụ đồng bộ nền đã dừng");
         }
     }
 }

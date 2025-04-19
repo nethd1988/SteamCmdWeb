@@ -87,10 +87,7 @@
                                             <strong>Mật khẩu:</strong>
                                             @if (!string.IsNullOrEmpty(Model.Profile.SteamPassword))
                                             {
-                                                <span id="passwordField">******</span>
-                                                <button type="button" class="btn btn-sm btn-outline-secondary" id="showPasswordBtn">
-                                                    <i class="bi bi-eye"></i>
-                                                </button>
+                                                <span>@Model.Profile.SteamPassword</span>
                                             }
                                             else
                                             {

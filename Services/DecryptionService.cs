@@ -11,7 +11,7 @@ namespace SteamCmdWeb.Services
 
         public DecryptionService()
         {
-            // L?y key t? c?u hình ho?c s? d?ng key m?c ??nh
+            // Khóa mã hóa c? ??nh ?? có th? gi?i mã d? li?u t? client
             _encryptionKey = "SteamCmdWebSecureKey123!@#$%";
         }
 
@@ -25,7 +25,7 @@ namespace SteamCmdWeb.Services
 
             using (Aes aes = Aes.Create())
             {
-                aes.Key = Encoding.UTF8.GetBytes(_encryptionKey.PadRight(32, '0').Substring(0, 32));
+                aes.Key = Encoding.UTF8.GetBytes(_encryptionKey.PadRight(32, '#').Substring(0, 32));
                 aes.IV = iv;
 
                 ICryptoTransform encryptor = aes.CreateEncryptor(aes.Key, aes.IV);
@@ -38,6 +38,7 @@ namespace SteamCmdWeb.Services
                         {
                             streamWriter.Write(plainText);
                         }
+
                         array = memoryStream.ToArray();
                     }
                 }
@@ -51,33 +52,25 @@ namespace SteamCmdWeb.Services
             if (string.IsNullOrEmpty(cipherText))
                 return string.Empty;
 
-            try
+            byte[] iv = new byte[16];
+            byte[] buffer = Convert.FromBase64String(cipherText);
+
+            using (Aes aes = Aes.Create())
             {
-                byte[] iv = new byte[16];
-                byte[] buffer = Convert.FromBase64String(cipherText);
+                aes.Key = Encoding.UTF8.GetBytes(_encryptionKey.PadRight(32, '#').Substring(0, 32));
+                aes.IV = iv;
+                ICryptoTransform decryptor = aes.CreateDecryptor(aes.Key, aes.IV);
 
-                using (Aes aes = Aes.Create())
+                using (MemoryStream memoryStream = new MemoryStream(buffer))
                 {
-                    aes.Key = Encoding.UTF8.GetBytes(_encryptionKey.PadRight(32, '0').Substring(0, 32));
-                    aes.IV = iv;
-                    ICryptoTransform decryptor = aes.CreateDecryptor(aes.Key, aes.IV);
-
-                    using (MemoryStream memoryStream = new MemoryStream(buffer))
+                    using (CryptoStream cryptoStream = new CryptoStream(memoryStream, decryptor, CryptoStreamMode.Read))
                     {
-                        using (CryptoStream cryptoStream = new CryptoStream(memoryStream, decryptor, CryptoStreamMode.Read))
+                        using (StreamReader streamReader = new StreamReader(cryptoStream))
                         {
-                            using (StreamReader streamReader = new StreamReader(cryptoStream))
-                            {
-                                return streamReader.ReadToEnd();
-                            }
+                            return streamReader.ReadToEnd();
                         }
                     }
                 }
-            }
-            catch (Exception)
-            {
-                // Tr? v? chu?i r?ng n?u có l?i khi gi?i mã
-                return string.Empty;
             }
         }
     }

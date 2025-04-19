@@ -38,6 +38,12 @@ builder.Services.AddSingleton<SyncService>();
 builder.Services.AddHostedService<SyncBackgroundService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<SystemMonitoringService>());
 builder.Services.AddHostedService<TcpServerService>();
+// Thêm các dòng sau vào phần đăng ký dịch vụ trong hàm Main
+// Sau dòng builder.Services.AddSingleton<ProfileService>();
+builder.Services.AddSingleton<DecryptionService>();
+builder.Services.AddSingleton<SyncService>();
+builder.Services.AddHostedService<SyncBackgroundService>();
+builder.Services.AddHostedService<TcpServerService>();
 
 // Thêm Memory Cache cho cải thiện hiệu suất
 builder.Services.AddMemoryCache();

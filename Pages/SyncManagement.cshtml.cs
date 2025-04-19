@@ -6,6 +6,8 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.Logging;
 using SteamCmdWeb.Services;
 using SteamCmdWeb.Models;
+using System.Net;
+using System.Linq;
 
 namespace SteamCmdWeb.Pages
 {
@@ -20,7 +22,6 @@ namespace SteamCmdWeb.Pages
         [TempData]
         public bool IsSuccess { get; set; }
 
-        public List<ClientRegistration> Clients { get; set; } = new List<ClientRegistration>();
         public List<SyncResult> SyncResults { get; set; } = new List<SyncResult>();
 
         public SyncManagementModel(
@@ -35,9 +36,8 @@ namespace SteamCmdWeb.Pages
         {
             try
             {
-                Clients = _syncService.GetRegisteredClients();
-                // Lấy kết quả đồng bộ gần đây (thực tế sẽ cần lưu trữ và lấy từ service)
-                SyncResults = new List<SyncResult>(); // Thay bằng lấy từ service
+                // Lấy kết quả đồng bộ gần đây
+                SyncResults = _syncService.GetSyncResults();
             }
             catch (Exception ex)
             {
@@ -47,43 +47,60 @@ namespace SteamCmdWeb.Pages
             }
         }
 
-        public async Task<IActionResult> OnPostSyncClientAsync(string clientId)
+        public async Task<IActionResult> OnPostSyncIpAsync(string ip, int port = 61188)
         {
             try
             {
-                var clients = _syncService.GetRegisteredClients();
-                var client = clients.Find(c => c.ClientId == clientId);
-
-                if (client == null)
+                if (string.IsNullOrEmpty(ip))
                 {
-                    StatusMessage = "Không tìm thấy client với ID này";
+                    StatusMessage = "Địa chỉ IP không được để trống";
                     IsSuccess = false;
                     return RedirectToPage();
                 }
 
-                var result = await _syncService.SyncProfilesFromClientAsync(client);
+                var result = await _syncService.SyncFromIpAsync(ip, port);
 
                 StatusMessage = result.Success
-                    ? $"Đồng bộ thành công từ client {clientId}. Đã thêm {result.NewProfilesAdded} profiles mới."
-                    : $"Lỗi khi đồng bộ từ client {clientId}: {result.Message}";
+                    ? $"Đồng bộ thành công từ {ip}:{port}. Đã thêm {result.NewProfilesAdded} profiles mới."
+                    : $"Lỗi khi đồng bộ từ {ip}:{port}: {result.Message}";
                 IsSuccess = result.Success;
 
                 return RedirectToPage();
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Lỗi khi đồng bộ từ client {ClientId}", clientId);
+                _logger.LogError(ex, "Lỗi khi đồng bộ từ IP {IP}:{Port}", ip, port);
                 StatusMessage = "Đã xảy ra lỗi khi đồng bộ: " + ex.Message;
                 IsSuccess = false;
                 return RedirectToPage();
             }
         }
 
-        public async Task<IActionResult> OnPostSyncAllAsync()
+        public async Task<IActionResult> OnPostScanNetworkAsync()
         {
             try
             {
-                var results = await _syncService.SyncFromAllClientsAsync();
+                await _syncService.ScanLocalNetworkAsync();
+
+                StatusMessage = "Đã quét mạng và đồng bộ với các client tìm thấy";
+                IsSuccess = true;
+
+                return RedirectToPage();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi quét mạng");
+                StatusMessage = "Đã xảy ra lỗi khi quét mạng: " + ex.Message;
+                IsSuccess = false;
+                return RedirectToPage();
+            }
+        }
+
+        public async Task<IActionResult> OnPostSyncKnownClientsAsync()
+        {
+            try
+            {
+                var results = await _syncService.SyncFromAllKnownClientsAsync();
 
                 int successCount = 0;
                 int totalNewProfiles = 0;
@@ -104,8 +121,8 @@ namespace SteamCmdWeb.Pages
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Lỗi khi đồng bộ từ tất cả clients");
-                StatusMessage = "Đã xảy ra lỗi khi đồng bộ từ tất cả clients: " + ex.Message;
+                _logger.LogError(ex, "Lỗi khi đồng bộ từ các client đã biết");
+                StatusMessage = "Đã xảy ra lỗi khi đồng bộ từ các client đã biết: " + ex.Message;
                 IsSuccess = false;
                 return RedirectToPage();
             }
