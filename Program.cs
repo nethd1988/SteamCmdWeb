@@ -10,6 +10,12 @@ using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Thêm cấu hình User Secrets
+if (builder.Environment.IsDevelopment())
+{
+    builder.Configuration.AddUserSecrets<Program>();
+}
+
 // Thêm các dịch vụ
 builder.Services.AddControllers()
     .AddJsonOptions(options =>

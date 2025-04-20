@@ -76,8 +76,8 @@
                                         else
                                         {
                                             <div>
-                                                <strong>Tài khoản:</strong> @(string.IsNullOrEmpty(profile.SteamUsername) ? "Không có" : profile.SteamUsername)<br />
-                                                <strong>Mật khẩu:</strong> @(string.IsNullOrEmpty(profile.SteamPassword) ? "Không có" : profile.SteamPassword)
+                                                <strong>Tài khoản:</strong> @(!string.IsNullOrEmpty(profile.SteamUsername) ? profile.SteamUsername : "Không có")<br />
+                                                <strong>Mật khẩu:</strong> @(!string.IsNullOrEmpty(profile.SteamPassword) ? "********" : "Không có")
                                             </div>
                                         }
                                     </td>
