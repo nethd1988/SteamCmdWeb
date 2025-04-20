@@ -48,30 +48,44 @@ namespace SteamCmdWeb.Pages
                     {
                         try
                         {
-                            // Kiểm tra và giải mã username
-                            if (!string.IsNullOrEmpty(profile.SteamUsername) && IsBase64String(profile.SteamUsername))
+                            // Không cần kiểm tra IsBased64String vì có thể gây lỗi với một số ký tự đặc biệt
+                            if (!string.IsNullOrEmpty(profile.SteamUsername))
                             {
-                                profile.SteamUsername = _decryptionService.DecryptString(profile.SteamUsername);
+                                try
+                                {
+                                    string decryptedUsername = _decryptionService.DecryptString(profile.SteamUsername);
+                                    if (!string.IsNullOrEmpty(decryptedUsername))
+                                    {
+                                        profile.SteamUsername = decryptedUsername;
+                                    }
+                                    // Nếu giải mã trả về chuỗi rỗng, giữ nguyên giá trị
+                                }
+                                catch
+                                {
+                                    // Giữ nguyên giá trị nếu không thể giải mã
+                                }
                             }
 
-                            // Kiểm tra và giải mã password
-                            if (!string.IsNullOrEmpty(profile.SteamPassword) && IsBase64String(profile.SteamPassword))
+                            // Mật khẩu hiển thị dưới dạng đã được mã hóa
+                            if (!string.IsNullOrEmpty(profile.SteamPassword))
                             {
-                                profile.SteamPassword = _decryptionService.DecryptString(profile.SteamPassword);
+                                try
+                                {
+                                    string decryptedPassword = _decryptionService.DecryptString(profile.SteamPassword);
+                                    if (!string.IsNullOrEmpty(decryptedPassword))
+                                    {
+                                        profile.SteamPassword = decryptedPassword;
+                                    }
+                                }
+                                catch
+                                {
+                                    // Giữ nguyên giá trị nếu không thể giải mã
+                                }
                             }
                         }
-                        catch (Exception ex)
+                        catch
                         {
-                            _logger.LogError(ex, "Không thể giải mã thông tin đăng nhập cho profile {ProfileName}", profile.Name);
-                            // Đặt giá trị mặc định nếu giải mã thất bại
-                            if (string.IsNullOrEmpty(profile.SteamUsername) || !IsReadableString(profile.SteamUsername))
-                            {
-                                profile.SteamUsername = "(Không thể giải mã)";
-                            }
-                            if (string.IsNullOrEmpty(profile.SteamPassword) || !IsReadableString(profile.SteamPassword))
-                            {
-                                profile.SteamPassword = "(Không thể giải mã)";
-                            }
+                            // Nếu có lỗi, giữ nguyên giá trị
                         }
                     }
                     else
@@ -81,8 +95,6 @@ namespace SteamCmdWeb.Pages
                         profile.SteamPassword = "Không có (Ẩn danh)";
                     }
                 }
-
-                _logger.LogInformation("Đã tải trang quản lý profile đang chờ với {PendingCount} profile", PendingProfiles.Count);
             }
             catch (Exception ex)
             {
