@@ -12,9 +12,13 @@ namespace SteamCmdWeb.Services
 
         public DecryptionService(IConfiguration configuration)
         {
-            // Đọc từ User Secrets hoặc sử dụng giá trị mặc định nếu không tồn tại
-            _encryptionKey = configuration["Encryption:Key"] ?? Environment.GetEnvironmentVariable("ENCRYPTION_KEY") ?? "ASecureKeyThatShouldBeChanged1234";
-            _encryptionIV = configuration["Encryption:IV"] ?? Environment.GetEnvironmentVariable("ENCRYPTION_IV") ?? "SecureIV12345678";
+            // Sử dụng cùng key và IV với phía client
+            _encryptionKey = configuration["Encryption:Key"] ??
+                            Environment.GetEnvironmentVariable("ENCRYPTION_KEY") ??
+                            "ThisIsASecretKey1234567890123456";
+            _encryptionIV = configuration["Encryption:IV"] ??
+                           Environment.GetEnvironmentVariable("ENCRYPTION_IV") ??
+                           "ThisIsAnIV123456";
         }
 
         public string EncryptString(string plainText)
@@ -76,8 +80,9 @@ namespace SteamCmdWeb.Services
                     }
                 }
             }
-            catch
+            catch (Exception ex)
             {
+                Console.WriteLine($"Lỗi giải mã: {ex.Message}");
                 return string.Empty;
             }
         }
