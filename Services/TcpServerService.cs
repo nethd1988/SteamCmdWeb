@@ -211,35 +211,29 @@ namespace SteamCmdWeb.Services
                     return;
                 }
 
+                // Lấy profile có giải mã thông tin đăng nhập
+                var decryptedProfile = await _profileService.GetDecryptedProfileByIdAsync(profile.Id);
+
                 // Chuyển đổi từ ClientProfile sang SteamCmdProfile để gửi về client
                 var steamCmdProfile = new SteamCmdWebAPI.Models.SteamCmdProfile
                 {
-                    Id = profile.Id,
-                    Name = profile.Name,
-                    AppID = profile.AppID,
-                    InstallDirectory = profile.InstallDirectory,
-                    Arguments = profile.Arguments,
-                    ValidateFiles = profile.ValidateFiles,
-                    AutoRun = profile.AutoRun,
-                    AnonymousLogin = profile.AnonymousLogin,
-                    Status = profile.Status,
-                    StartTime = profile.StartTime,
-                    StopTime = profile.StopTime,
-                    Pid = profile.Pid,
-                    LastRun = profile.LastRun
+                    Id = decryptedProfile.Id,
+                    Name = decryptedProfile.Name,
+                    AppID = decryptedProfile.AppID,
+                    InstallDirectory = decryptedProfile.InstallDirectory,
+                    Arguments = decryptedProfile.Arguments,
+                    ValidateFiles = decryptedProfile.ValidateFiles,
+                    AutoRun = decryptedProfile.AutoRun,
+                    AnonymousLogin = decryptedProfile.AnonymousLogin,
+                    Status = decryptedProfile.Status,
+                    StartTime = decryptedProfile.StartTime,
+                    StopTime = decryptedProfile.StopTime,
+                    Pid = decryptedProfile.Pid,
+                    LastRun = decryptedProfile.LastRun,
+                    // Gửi cả thông tin đăng nhập đã giải mã
+                    SteamUsername = decryptedProfile.AnonymousLogin ? "" : decryptedProfile.SteamUsername,
+                    SteamPassword = decryptedProfile.AnonymousLogin ? "" : decryptedProfile.SteamPassword
                 };
-
-                // Không gửi thông tin đăng nhập đã mã hóa
-                if (!profile.AnonymousLogin)
-                {
-                    steamCmdProfile.SteamUsername = "encrypted";
-                    steamCmdProfile.SteamPassword = "encrypted";
-                }
-                else
-                {
-                    steamCmdProfile.SteamUsername = "";
-                    steamCmdProfile.SteamPassword = "";
-                }
 
                 string json = JsonSerializer.Serialize(steamCmdProfile);
                 await SendResponseAsync(stream, json, stoppingToken);

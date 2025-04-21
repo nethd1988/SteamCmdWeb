@@ -52,7 +52,7 @@ namespace SteamCmdWeb.Services
 
         public string DecryptString(string cipherText)
         {
-            if (string.IsNullOrEmpty(cipherText)) return string.Empty;
+            if (string.IsNullOrEmpty(cipherText) || cipherText == "encrypted") return string.Empty;
 
             try
             {
