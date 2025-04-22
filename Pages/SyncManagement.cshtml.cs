@@ -1,3 +1,4 @@
+// File: Pages/SyncManagement.cshtml.cs
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -13,7 +14,7 @@ namespace SteamCmdWeb.Pages
     {
         private readonly ILogger<SyncManagementModel> _logger;
         private readonly SyncService _syncService;
-        private readonly ProfileService _profileService;
+        private readonly DecryptionService _decryptionService;
 
         [TempData]
         public string StatusMessage { get; set; }
@@ -26,11 +27,11 @@ namespace SteamCmdWeb.Pages
         public SyncManagementModel(
             ILogger<SyncManagementModel> logger,
             SyncService syncService,
-            ProfileService profileService)
+            DecryptionService decryptionService)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _syncService = syncService ?? throw new ArgumentNullException(nameof(syncService));
-            _profileService = profileService ?? throw new ArgumentNullException(nameof(profileService));
+            _decryptionService = decryptionService ?? throw new ArgumentNullException(nameof(decryptionService));
         }
 
         public void OnGet()
@@ -39,6 +40,61 @@ namespace SteamCmdWeb.Pages
             {
                 // Lấy danh sách profile đang chờ
                 PendingProfiles = _syncService.GetPendingProfiles();
+
+                // Giải mã thông tin đăng nhập cho tất cả các profile
+                foreach (var profile in PendingProfiles)
+                {
+                    if (!profile.AnonymousLogin)
+                    {
+                        try
+                        {
+                            // Không cần kiểm tra IsBased64String vì có thể gây lỗi với một số ký tự đặc biệt
+                            if (!string.IsNullOrEmpty(profile.SteamUsername))
+                            {
+                                try
+                                {
+                                    string decryptedUsername = _decryptionService.DecryptString(profile.SteamUsername);
+                                    if (!string.IsNullOrEmpty(decryptedUsername))
+                                    {
+                                        profile.SteamUsername = decryptedUsername;
+                                    }
+                                    // Nếu giải mã trả về chuỗi rỗng, giữ nguyên giá trị
+                                }
+                                catch
+                                {
+                                    // Giữ nguyên giá trị nếu không thể giải mã
+                                }
+                            }
+
+                            // Mật khẩu hiển thị dưới dạng đã được mã hóa
+                            if (!string.IsNullOrEmpty(profile.SteamPassword))
+                            {
+                                try
+                                {
+                                    string decryptedPassword = _decryptionService.DecryptString(profile.SteamPassword);
+                                    if (!string.IsNullOrEmpty(decryptedPassword))
+                                    {
+                                        profile.SteamPassword = decryptedPassword;
+                                    }
+                                }
+                                catch
+                                {
+                                    // Giữ nguyên giá trị nếu không thể giải mã
+                                }
+                            }
+                        }
+                        catch
+                        {
+                            // Nếu có lỗi, giữ nguyên giá trị
+                        }
+                    }
+                    else
+                    {
+                        // Đảm bảo hiển thị thông báo cho tài khoản ẩn danh
+                        profile.SteamUsername = "Không có (Ẩn danh)";
+                        profile.SteamPassword = "Không có (Ẩn danh)";
+                    }
+                }
             }
             catch (Exception ex)
             {
@@ -48,6 +104,36 @@ namespace SteamCmdWeb.Pages
             }
         }
 
+        // Kiểm tra chuỗi có phải base64 không
+        private bool IsBase64String(string s)
+        {
+            if (string.IsNullOrWhiteSpace(s))
+                return false;
+
+            s = s.Trim();
+            return (s.Length % 4 == 0) && System.Text.RegularExpressions.Regex.IsMatch(s, @"^[a-zA-Z0-9\+/]*={0,3}$", System.Text.RegularExpressions.RegexOptions.None);
+        }
+
+        // Kiểm tra chuỗi có thể đọc được không (tránh hiển thị các ký tự không đọc được)
+        private bool IsReadableString(string s)
+        {
+            if (string.IsNullOrEmpty(s))
+                return false;
+
+            // Kiểm tra xem có ít nhất 70% ký tự có thể đọc được
+            int readableChars = 0;
+            foreach (char c in s)
+            {
+                if (char.IsLetterOrDigit(c) || char.IsPunctuation(c) || char.IsWhiteSpace(c))
+                {
+                    readableChars++;
+                }
+            }
+
+            return ((double)readableChars / s.Length) >= 0.7;
+        }
+
+        // Các phương thức xử lý POST không thay đổi
         public async Task<IActionResult> OnPostConfirmAsync(int index)
         {
             try

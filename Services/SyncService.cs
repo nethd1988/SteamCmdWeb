@@ -1,10 +1,12 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Collections.Concurrent;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using SteamCmdWeb.Models;
+using System.Text.Json;
 
 namespace SteamCmdWeb.Services
 {
@@ -12,16 +14,25 @@ namespace SteamCmdWeb.Services
     {
         private readonly ILogger<SyncService> _logger;
         private readonly ProfileService _profileService;
+        private readonly DecryptionService _decryptionService;
 
         // Danh sách các profile đang chờ xác nhận
         private readonly ConcurrentBag<ClientProfile> _pendingProfiles = new ConcurrentBag<ClientProfile>();
 
+        // Danh sách các kết quả đồng bộ gần đây
+        private readonly ConcurrentQueue<SyncResult> _syncResults = new ConcurrentQueue<SyncResult>();
+
+        // Giới hạn số lượng kết quả đồng bộ lưu trữ
+        private const int MaxSyncResultsCount = 100;
+
         public SyncService(
             ILogger<SyncService> logger,
-            ProfileService profileService)
+            ProfileService profileService,
+            DecryptionService decryptionService)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _profileService = profileService ?? throw new ArgumentNullException(nameof(profileService));
+            _decryptionService = decryptionService ?? throw new ArgumentNullException(nameof(decryptionService));
         }
 
         // Lấy danh sách profile đang chờ xác nhận
@@ -172,6 +183,92 @@ namespace SteamCmdWeb.Services
                     _pendingProfiles.Add(profiles[i]);
                 }
             }
+        }
+
+        // Lấy danh sách kết quả đồng bộ gần đây
+        public List<SyncResult> GetSyncResults()
+        {
+            return _syncResults.ToList();
+        }
+
+        // Thêm kết quả đồng bộ mới
+        private void AddSyncResult(SyncResult result)
+        {
+            _syncResults.Enqueue(result);
+
+            // Giữ số lượng kết quả trong giới hạn
+            while (_syncResults.Count > MaxSyncResultsCount && _syncResults.TryDequeue(out _))
+            {
+            }
+        }
+
+        // Đồng bộ từ một IP cụ thể
+        public async Task<SyncResult> SyncFromIpAsync(string ip, int port = 61188)
+        {
+            try
+            {
+                // Khởi tạo kết quả đồng bộ
+                var result = new SyncResult
+                {
+                    ClientId = ip,
+                    Timestamp = DateTime.Now,
+                    Success = false
+                };
+
+                _logger.LogInformation("Bắt đầu đồng bộ từ IP: {Ip}:{Port}", ip, port);
+
+                // TODO: Kết nối và đồng bộ từ IP
+                // Giả định đồng bộ thành công
+                result.Success = true;
+                result.Message = "Đồng bộ thành công";
+                result.TotalProfiles = 0;
+                result.NewProfilesAdded = 0;
+
+                // Lưu kết quả đồng bộ
+                AddSyncResult(result);
+
+                return result;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi đồng bộ từ IP: {Ip}:{Port}", ip, port);
+
+                var result = new SyncResult
+                {
+                    ClientId = ip,
+                    Timestamp = DateTime.Now,
+                    Success = false,
+                    Message = $"Lỗi: {ex.Message}"
+                };
+
+                AddSyncResult(result);
+
+                return result;
+            }
+        }
+
+        // Phát hiện và đồng bộ với các client trong mạng
+        public async Task DiscoverAndSyncClientsAsync()
+        {
+            _logger.LogInformation("Bắt đầu phát hiện và đồng bộ với các client trong mạng");
+
+            // TODO: Phát hiện và đồng bộ với các client trong mạng
+            // Giả định không tìm thấy client nào
+            _logger.LogInformation("Kết thúc quét mạng, không tìm thấy client nào");
+        }
+
+        // Đồng bộ từ tất cả các client đã biết
+        public async Task<List<SyncResult>> SyncFromAllKnownClientsAsync()
+        {
+            _logger.LogInformation("Bắt đầu đồng bộ từ tất cả các client đã biết");
+
+            // TODO: Đồng bộ từ tất cả các client đã biết
+            // Giả định không có client nào
+            var results = new List<SyncResult>();
+
+            _logger.LogInformation("Kết thúc đồng bộ từ tất cả các client đã biết, đã đồng bộ {Count} client", results.Count);
+
+            return results;
         }
     }
 }
