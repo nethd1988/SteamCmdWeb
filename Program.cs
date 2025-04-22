@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using SteamCmdWeb.Services;
 using System;
 using System.IO;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -28,15 +29,11 @@ builder.Services.AddControllers()
 
 builder.Services.AddRazorPages();
 
-// Đăng ký các dịch vụ tùy chỉnh cần thiết
+// Đăng ký các dịch vụ tùy chỉnh
 builder.Services.AddSingleton<DecryptionService>();
 builder.Services.AddSingleton<ProfileService>();
-builder.Services.AddSingleton<TcpServerService>();
-
-// Loại bỏ các service không còn cần thiết
-// builder.Services.AddSingleton<SilentSyncHelper>();
-// builder.Services.AddSingleton<SyncService>();
-// builder.Services.AddHostedService<SyncBackgroundService>();
+builder.Services.AddSingleton<SyncService>();
+builder.Services.AddHostedService<TcpServerService>();
 
 // Thêm Memory Cache cho cải thiện hiệu suất
 builder.Services.AddMemoryCache();
@@ -65,17 +62,9 @@ app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseRouting();
 
-// Xóa bỏ middleware đồng bộ không cần thiết
-// app.UseSilentSyncMiddleware();
-
 // Ánh xạ các endpoint
 app.MapControllers();
 app.MapRazorPages();
-// Map default route
-app.MapGet("/", context => {
-    context.Response.Redirect("/Index");
-    return Task.CompletedTask;
-});
 
 // Tạo các thư mục cần thiết
 var dataFolder = Path.Combine(app.Environment.ContentRootPath, "Data");

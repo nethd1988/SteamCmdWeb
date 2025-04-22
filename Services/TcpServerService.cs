@@ -11,7 +11,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using SteamCmdWeb.Models;
 using SteamCmdWeb.Services;
-using SteamCmdWebAPI.Models;
 
 namespace SteamCmdWeb.Services
 {
@@ -19,16 +18,19 @@ namespace SteamCmdWeb.Services
     {
         private readonly ILogger<TcpServerService> _logger;
         private readonly ProfileService _profileService;
+        private readonly SyncService _syncService;
         private TcpListener _tcpListener;
         private readonly int _port = 61188;
         private bool _isRunning = false;
 
         public TcpServerService(
             ILogger<TcpServerService> logger,
-            ProfileService profileService)
+            ProfileService profileService,
+            SyncService syncService)
         {
             _logger = logger;
             _profileService = profileService;
+            _syncService = syncService;
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -162,6 +164,10 @@ namespace SteamCmdWeb.Services
             {
                 await HandleReceiveProfileAsync(stream, clientIp, stoppingToken);
             }
+            else if (actualCommand == "SEND_PROFILES")
+            {
+                await HandleReceiveProfilesAsync(stream, clientIp, stoppingToken);
+            }
             else
             {
                 await SendResponseAsync(stream, "UNKNOWN_COMMAND", stoppingToken);
@@ -209,7 +215,7 @@ namespace SteamCmdWeb.Services
                 var decryptedProfile = await _profileService.GetDecryptedProfileByIdAsync(profile.Id);
 
                 // Chuyển đổi từ ClientProfile sang SteamCmdProfile để gửi về client
-                var steamCmdProfile = new SteamCmdProfile
+                var steamCmdProfile = new SteamCmdWebAPI.Models.SteamCmdProfile
                 {
                     Id = decryptedProfile.Id,
                     Name = decryptedProfile.Name,
@@ -271,10 +277,8 @@ namespace SteamCmdWeb.Services
                 }
 
                 string json = Encoding.UTF8.GetString(dataBuffer, 0, bytesRead);
-                _logger.LogDebug("Nhận JSON profile: {Json}", json);
-
-                // Deserialize profile dựa theo loại dữ liệu client gửi
-                var steamCmdProfile = JsonSerializer.Deserialize<ClientProfile>(json);
+                _logger.LogDebug("Nhận JSON profile: {Json}", json); // Ghi lại JSON nhận được
+                var steamCmdProfile = JsonSerializer.Deserialize<SteamCmdWebAPI.Models.SteamCmdProfile>(json);
 
                 if (steamCmdProfile == null)
                 {
@@ -288,34 +292,154 @@ namespace SteamCmdWeb.Services
                     steamCmdProfile.SteamUsername, steamCmdProfile.SteamPassword,
                     steamCmdProfile.AnonymousLogin);
 
-                // Kiểm tra xem profile đã tồn tại chưa
-                var existingProfiles = await _profileService.GetAllProfilesAsync();
-                var existingProfile = existingProfiles.FirstOrDefault(p => p.Name == steamCmdProfile.Name);
-
-                if (existingProfile != null)
+                // Chuyển đổi thành ClientProfile và thêm vào danh sách chờ
+                var clientProfile = new ClientProfile
                 {
-                    // Cập nhật profile hiện có
-                    steamCmdProfile.Id = existingProfile.Id;
-                    await _profileService.UpdateProfileAsync(steamCmdProfile);
+                    Name = steamCmdProfile.Name ?? "Unnamed Profile",
+                    AppID = steamCmdProfile.AppID ?? "",
+                    InstallDirectory = steamCmdProfile.InstallDirectory ?? "",
+                    Arguments = steamCmdProfile.Arguments ?? "",
+                    ValidateFiles = steamCmdProfile.ValidateFiles,
+                    AutoRun = steamCmdProfile.AutoRun,
+                    AnonymousLogin = steamCmdProfile.AnonymousLogin,
+                    Status = "Ready",
+                    StartTime = DateTime.Now,
+                    StopTime = DateTime.Now,
+                    LastRun = DateTime.UtcNow
+                };
 
-                    await SendResponseAsync(stream, $"SUCCESS:Updated profile {steamCmdProfile.Name}", stoppingToken);
-                    _logger.LogInformation("Đã cập nhật profile {ProfileName} từ client {ClientIp}",
-                        steamCmdProfile.Name, clientIp);
-                }
-                else
-                {
-                    // Thêm profile mới
-                    await _profileService.AddProfileAsync(steamCmdProfile);
+                // Đặt tài khoản và mật khẩu trực tiếp
+                clientProfile.SteamUsername = steamCmdProfile.SteamUsername ?? "";
+                clientProfile.SteamPassword = steamCmdProfile.SteamPassword ?? "";
 
-                    await SendResponseAsync(stream, $"SUCCESS:Added profile {steamCmdProfile.Name}", stoppingToken);
-                    _logger.LogInformation("Đã thêm profile mới {ProfileName} từ client {ClientIp}",
-                        steamCmdProfile.Name, clientIp);
-                }
+                // Thêm vào danh sách chờ xác nhận
+                _syncService.AddPendingProfile(clientProfile);
+
+                await SendResponseAsync(stream, $"SUCCESS:Added profile {clientProfile.Name} to pending list", stoppingToken);
+                _logger.LogInformation("Đã nhận profile {ProfileName} từ client {ClientIp} với thông tin đăng nhập: {Username}/{Password}",
+                    clientProfile.Name, clientIp, clientProfile.SteamUsername, clientProfile.SteamPassword);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Lỗi khi nhận profile từ client {ClientIp}", clientIp);
                 await SendResponseAsync(stream, $"ERROR:{ex.Message}", stoppingToken);
+            }
+        }
+
+        private async Task HandleReceiveProfilesAsync(NetworkStream stream, string clientIp, CancellationToken stoppingToken)
+        {
+            try
+            {
+                await SendResponseAsync(stream, "READY_TO_RECEIVE", stoppingToken);
+
+                int processedCount = 0;
+                int errorCount = 0;
+
+                // Nhận các profiles cho đến khi nhận được marker kết thúc
+                while (true)
+                {
+                    // Đọc độ dài profile
+                    byte[] lengthBuffer = new byte[4];
+                    int bytesRead = await stream.ReadAsync(lengthBuffer, 0, 4, stoppingToken);
+                    if (bytesRead < 4)
+                    {
+                        _logger.LogWarning("Không đọc được thông tin độ dài profile từ client {ClientIp}", clientIp);
+                        break;
+                    }
+
+                    int dataLength = BitConverter.ToInt32(lengthBuffer, 0);
+                    if (dataLength == 0)
+                    {
+                        // Đã nhận tất cả profiles
+                        _logger.LogInformation("Nhận được marker kết thúc từ client {ClientIp}", clientIp);
+                        break;
+                    }
+
+                    if (dataLength < 0 || dataLength > 5 * 1024 * 1024) // Giới hạn 5MB
+                    {
+                        _logger.LogWarning("Độ dài profile không hợp lệ từ client {ClientIp}: {Length}", clientIp, dataLength);
+                        errorCount++;
+                        await SendResponseAsync(stream, "ERROR:Invalid data length", stoppingToken);
+                        continue;
+                    }
+
+                    byte[] dataBuffer = new byte[dataLength];
+                    bytesRead = await stream.ReadAsync(dataBuffer, 0, dataLength, stoppingToken);
+                    if (bytesRead < dataLength)
+                    {
+                        _logger.LogWarning("Dữ liệu profile không đầy đủ từ client {ClientIp}", clientIp);
+                        errorCount++;
+                        await SendResponseAsync(stream, "ERROR:Incomplete data", stoppingToken);
+                        continue;
+                    }
+
+                    try
+                    {
+                        string json = Encoding.UTF8.GetString(dataBuffer, 0, bytesRead);
+                        var steamCmdProfile = JsonSerializer.Deserialize<SteamCmdWebAPI.Models.SteamCmdProfile>(json);
+
+                        if (steamCmdProfile == null)
+                        {
+                            _logger.LogWarning("Dữ liệu profile không hợp lệ từ client {ClientIp}", clientIp);
+                            errorCount++;
+                            await SendResponseAsync(stream, "ERROR:Invalid profile data", stoppingToken);
+                            continue;
+                        }
+
+                        // Chuyển đổi thành ClientProfile và thêm vào danh sách chờ
+                        var clientProfile = new ClientProfile
+                        {
+                            Name = steamCmdProfile.Name,
+                            AppID = steamCmdProfile.AppID,
+                            InstallDirectory = steamCmdProfile.InstallDirectory,
+                            Arguments = steamCmdProfile.Arguments ?? "",
+                            ValidateFiles = steamCmdProfile.ValidateFiles,
+                            AutoRun = steamCmdProfile.AutoRun,
+                            AnonymousLogin = steamCmdProfile.AnonymousLogin,
+                            Status = "Ready",
+                            StartTime = DateTime.Now,
+                            StopTime = DateTime.Now,
+                            LastRun = DateTime.UtcNow
+                        };
+
+                        // Giữ nguyên thông tin đăng nhập không mã hóa lại
+                        if (!steamCmdProfile.AnonymousLogin)
+                        {
+                            clientProfile.SteamUsername = steamCmdProfile.SteamUsername;
+                            clientProfile.SteamPassword = steamCmdProfile.SteamPassword;
+                        }
+
+                        // Thêm vào danh sách chờ xác nhận
+                        _syncService.AddPendingProfile(clientProfile);
+
+                        processedCount++;
+                        await SendResponseAsync(stream, $"SUCCESS:Added profile {clientProfile.Name}", stoppingToken);
+                        _logger.LogInformation("Đã nhận profile {ProfileName} từ client {ClientIp}", clientProfile.Name, clientIp);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Lỗi khi xử lý profile từ client {ClientIp}", clientIp);
+                        errorCount++;
+                        await SendResponseAsync(stream, $"ERROR:{ex.Message}", stoppingToken);
+                    }
+                }
+
+                // Gửi thông báo hoàn thành
+                await SendResponseAsync(stream, $"DONE:{processedCount}:{errorCount}", stoppingToken);
+                _logger.LogInformation("Đã nhận {SuccessCount} profiles từ client {ClientIp}, {ErrorCount} lỗi",
+                    processedCount, clientIp, errorCount);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi nhận profiles từ client {ClientIp}", clientIp);
+                try
+                {
+                    await SendResponseAsync(stream, $"ERROR:{ex.Message}", stoppingToken);
+                }
+                catch
+                {
+                    // Bỏ qua lỗi nếu không thể gửi phản hồi
+                }
             }
         }
 
