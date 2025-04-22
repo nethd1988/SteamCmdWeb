@@ -7,7 +7,7 @@ using System;
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-
+using SteamCmdWeb.Services;
 var builder = WebApplication.CreateBuilder(args);
 
 // Thêm cấu hình User Secrets
@@ -33,7 +33,8 @@ builder.Services.AddRazorPages();
 builder.Services.AddSingleton<DecryptionService>();
 builder.Services.AddSingleton<ProfileService>();
 builder.Services.AddSingleton<SyncService>();
-builder.Services.AddHostedService<TcpServerService>();
+builder.Services.AddSingleton<EncryptionService>();
+builder.Services.AddHostedService<SteamCmdWeb.Services.TcpServerService>();
 
 // Thêm Memory Cache cho cải thiện hiệu suất
 builder.Services.AddMemoryCache();
@@ -44,6 +45,7 @@ builder.Logging.AddDebug();
 builder.Logging.AddFilter("Microsoft", LogLevel.Warning);
 builder.Logging.AddFilter("System", LogLevel.Warning);
 builder.Logging.AddFilter("SteamCmdWeb", LogLevel.Information);
+
 
 var app = builder.Build();
 
