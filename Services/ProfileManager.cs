@@ -70,8 +70,14 @@ namespace SteamCmdWeb.Services
                     profile.Id = profiles.Count > 0 ? profiles.Max(p => p.Id) + 1 : 1;
                 }
 
-                // Xử lý mật khẩu nếu cần
-                if (!string.IsNullOrEmpty(profile.SteamPassword) && !profile.AnonymousLogin)
+                // Kiểm tra thông tin đăng nhập
+                if (string.IsNullOrEmpty(profile.SteamUsername) || string.IsNullOrEmpty(profile.SteamPassword))
+                {
+                    throw new ArgumentException("Thông tin đăng nhập Steam không được để trống");
+                }
+
+                // Xử lý mật khẩu
+                if (!string.IsNullOrEmpty(profile.SteamPassword))
                 {
                     profile.SteamPassword = EncryptString(profile.SteamPassword);
                 }
@@ -98,6 +104,18 @@ namespace SteamCmdWeb.Services
                 if (existingProfile == null)
                 {
                     return false;
+                }
+
+                // Kiểm tra thông tin đăng nhập
+                if (string.IsNullOrEmpty(profile.SteamUsername) || string.IsNullOrEmpty(profile.SteamPassword))
+                {
+                    throw new ArgumentException("Thông tin đăng nhập Steam không được để trống");
+                }
+
+                // Mã hóa mật khẩu nếu cần
+                if (!string.IsNullOrEmpty(profile.SteamPassword))
+                {
+                    profile.SteamPassword = EncryptString(profile.SteamPassword);
                 }
 
                 var index = profiles.IndexOf(existingProfile);
