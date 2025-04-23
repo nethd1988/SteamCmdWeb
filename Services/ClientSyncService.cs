@@ -42,12 +42,6 @@ namespace SteamCmdWeb.Services
                     return (false, "Profile không hợp lệ");
                 }
 
-                // Kiểm tra thông tin đăng nhập
-                if (string.IsNullOrEmpty(profile.SteamUsername) || string.IsNullOrEmpty(profile.SteamPassword))
-                {
-                    return (false, "Thông tin đăng nhập Steam không được để trống");
-                }
-
                 var existingProfiles = _profileManager.GetAllProfiles();
                 var existingProfile = existingProfiles.FirstOrDefault(p =>
                     p.Name == profile.Name &&
@@ -99,14 +93,6 @@ namespace SteamCmdWeb.Services
                     try
                     {
                         if (profile == null) continue;
-
-                        // Kiểm tra thông tin đăng nhập
-                        if (string.IsNullOrEmpty(profile.SteamUsername) || string.IsNullOrEmpty(profile.SteamPassword))
-                        {
-                            _logger.LogWarning("Profile {Name} không có thông tin đăng nhập đầy đủ", profile.Name);
-                            errors++;
-                            continue;
-                        }
 
                         var existingProfile = existingProfiles.FirstOrDefault(p =>
                             p.Name == profile.Name &&
@@ -191,14 +177,6 @@ namespace SteamCmdWeb.Services
                     try
                     {
                         if (profile == null) continue;
-
-                        // Kiểm tra thông tin đăng nhập
-                        if (string.IsNullOrEmpty(profile.SteamUsername) || string.IsNullOrEmpty(profile.SteamPassword))
-                        {
-                            _logger.LogWarning("Profile {Name} không có thông tin đăng nhập đầy đủ", profile.Name);
-                            errors++;
-                            continue;
-                        }
 
                         var existingProfile = existingProfiles.FirstOrDefault(p =>
                             p.Name == profile.Name &&

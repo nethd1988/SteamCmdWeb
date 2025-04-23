@@ -44,8 +44,9 @@ namespace SteamCmdWeb.Controllers
                     p.Arguments,
                     p.ValidateFiles,
                     p.AutoRun,
-                    SteamUsername = "***",
-                    SteamPassword = "***",
+                    p.AnonymousLogin,
+                    SteamUsername = p.AnonymousLogin ? "" : "***",
+                    SteamPassword = p.AnonymousLogin ? "" : "***",
                     p.Status
                 }).ToList();
 
@@ -91,13 +92,7 @@ namespace SteamCmdWeb.Controllers
                         string arguments = clientProfile.Arguments?.ToString() ?? "";
                         bool validateFiles = clientProfile.ValidateFiles != null && Convert.ToBoolean(clientProfile.ValidateFiles);
                         bool autoRun = clientProfile.AutoRun != null && Convert.ToBoolean(clientProfile.AutoRun);
-
-                        // Kiểm tra thông tin đăng nhập bắt buộc
-                        if (string.IsNullOrEmpty(steamUsername) || string.IsNullOrEmpty(steamPassword))
-                        {
-                            _logger.LogWarning("Profile {Name} không có thông tin đăng nhập đầy đủ", name);
-                            continue;
-                        }
+                        bool anonymousLogin = clientProfile.AnonymousLogin != null && Convert.ToBoolean(clientProfile.AnonymousLogin);
 
                         // Chuyển đổi sang ClientProfile và thêm vào danh sách chờ
                         var pendingProfile = new ClientProfile
@@ -110,6 +105,7 @@ namespace SteamCmdWeb.Controllers
                             Arguments = arguments,
                             ValidateFiles = validateFiles,
                             AutoRun = autoRun,
+                            AnonymousLogin = anonymousLogin,
                             Status = "Ready",
                             StartTime = DateTime.Now,
                             StopTime = DateTime.Now,
@@ -163,19 +159,13 @@ namespace SteamCmdWeb.Controllers
                 string arguments = clientProfile.Arguments?.ToString() ?? "";
                 bool validateFiles = clientProfile.ValidateFiles != null && Convert.ToBoolean(clientProfile.ValidateFiles);
                 bool autoRun = clientProfile.AutoRun != null && Convert.ToBoolean(clientProfile.AutoRun);
-
-                // Kiểm tra thông tin đăng nhập bắt buộc
-                if (string.IsNullOrEmpty(steamUsername) || string.IsNullOrEmpty(steamPassword))
-                {
-                    _logger.LogWarning("Profile {Name} không có thông tin đăng nhập đầy đủ", name);
-                    return BadRequest(new { success = false, message = "Thông tin đăng nhập là bắt buộc" });
-                }
+                bool anonymousLogin = clientProfile.AnonymousLogin != null && Convert.ToBoolean(clientProfile.AnonymousLogin);
 
                 _logger.LogInformation("Nhận yêu cầu đồng bộ profile từ {ClientIp}: {ProfileName}", clientIp, name);
 
                 // Log chi tiết thông tin nhận được
-                _logger.LogInformation("Thông tin profile nhận được: Name={Name}, AppID={AppID}, Username={Username}",
-                    name, appId, steamUsername);
+                _logger.LogInformation("Thông tin profile nhận được: Name={Name}, AppID={AppID}, Username={Username}, Anonymous={Anonymous}",
+                    name, appId, steamUsername, anonymousLogin);
 
                 // Chuyển đổi sang ClientProfile
                 var pendingProfile = new ClientProfile
@@ -188,6 +178,7 @@ namespace SteamCmdWeb.Controllers
                     Arguments = arguments,
                     ValidateFiles = validateFiles,
                     AutoRun = autoRun,
+                    AnonymousLogin = anonymousLogin,
                     Status = "Ready",
                     StartTime = DateTime.Now,
                     StopTime = DateTime.Now,

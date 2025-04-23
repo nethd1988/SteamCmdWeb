@@ -1,10 +1,10 @@
-﻿using System;
+using System;
 using System.Diagnostics;
 using System.Text.Json.Serialization;
 
 namespace SteamCmdWeb.Models
 {
-    [DebuggerDisplay("Name={Name}, Username={SteamUsername}, Password={SteamPassword}")]
+    [DebuggerDisplay("Name={Name}, Username={SteamUsername}, Password={SteamPassword}, Anonymous={AnonymousLogin}")]
     public class ClientProfile
     {
         public int Id { get; set; }
@@ -16,6 +16,7 @@ namespace SteamCmdWeb.Models
         public string Arguments { get; set; } = string.Empty;
         public bool ValidateFiles { get; set; }
         public bool AutoRun { get; set; }
+        public bool AnonymousLogin { get; set; }
         public string Status { get; set; } = "Ready";
         public DateTime StartTime { get; set; } = DateTime.Now;
         public DateTime StopTime { get; set; } = DateTime.Now;
