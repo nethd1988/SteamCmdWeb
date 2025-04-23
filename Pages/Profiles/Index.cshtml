@@ -45,7 +45,7 @@
                             <th scope="col">Tên</th>
                             <th scope="col">App ID</th>
                             <th scope="col">Thư mục cài đặt</th>
-                            <th scope="col">Loại đăng nhập</th>
+                            <th scope="col">Thông tin đăng nhập</th>
                             <th scope="col" class="text-center">Thao tác</th>
                         </tr>
                     </thead>
@@ -69,14 +69,7 @@
                                     <td>@profile.AppID</td>
                                     <td class="text-truncate" style="max-width: 200px;">@profile.InstallDirectory</td>
                                     <td>
-                                        @if (profile.AnonymousLogin)
-                                        {
-                                            <span class="badge bg-secondary">Ẩn danh</span>
-                                        }
-                                        else
-                                        {
-                                            <span class="badge bg-info">Tài khoản</span>
-                                        }
+                                        <span class="badge bg-info">Tài khoản Steam</span>
                                     </td>
                                     <td class="text-center">
                                         <a href="/Profiles/Details/@profile.Id" class="btn btn-sm btn-info">
@@ -85,7 +78,7 @@
                                         <a href="/Profiles/Edit/@profile.Id" class="btn btn-sm btn-primary">
                                             <i class="bi bi-pencil"></i>
                                         </a>
-                                       <button type="button" class="btn btn-sm btn-danger delete-btn" data-id="@profile.Id" data-name="@profile.Name">
+                                        <button type="button" class="btn btn-sm btn-danger delete-btn" data-id="@profile.Id" data-name="@profile.Name">
                                             <i class="bi bi-trash"></i>
                                         </button>
                                     </td>
@@ -137,10 +130,10 @@
                 button.addEventListener('click', function() {
                     const profileId = this.getAttribute('data-id');
                     const profileName = this.getAttribute('data-name');
-                    
+
                     document.getElementById('profileIdToDelete').value = profileId;
                     document.getElementById('profileNameToDelete').innerText = profileName;
-                    
+
                     const deleteModal = new bootstrap.Modal(document.getElementById('deleteConfirmModal'));
                     deleteModal.show();
                 });

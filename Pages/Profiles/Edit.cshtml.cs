@@ -77,33 +77,24 @@ namespace SteamCmdWeb.Pages.Profiles
                     return NotFound();
                 }
 
-                // Xử lý thông tin đăng nhập
-                if (Profile.AnonymousLogin)
+                // Cập nhật username nếu có thay đổi
+                if (!string.IsNullOrEmpty(NewUsername))
                 {
-                    Profile.SteamUsername = string.Empty;
-                    Profile.SteamPassword = string.Empty;
+                    Profile.SteamUsername = _decryptionService.EncryptString(NewUsername);
                 }
                 else
                 {
-                    // Cập nhật username nếu có thay đổi
-                    if (!string.IsNullOrEmpty(NewUsername))
-                    {
-                        Profile.SteamUsername = _decryptionService.EncryptString(NewUsername);
-                    }
-                    else
-                    {
-                        Profile.SteamUsername = existingProfile.SteamUsername;
-                    }
+                    Profile.SteamUsername = existingProfile.SteamUsername;
+                }
 
-                    // Cập nhật password nếu có thay đổi
-                    if (!string.IsNullOrEmpty(NewPassword))
-                    {
-                        Profile.SteamPassword = _decryptionService.EncryptString(NewPassword);
-                    }
-                    else
-                    {
-                        Profile.SteamPassword = existingProfile.SteamPassword;
-                    }
+                // Cập nhật password nếu có thay đổi
+                if (!string.IsNullOrEmpty(NewPassword))
+                {
+                    Profile.SteamPassword = _decryptionService.EncryptString(NewPassword);
+                }
+                else
+                {
+                    Profile.SteamPassword = existingProfile.SteamPassword;
                 }
 
                 // Giữ nguyên các thông tin không thay đổi

@@ -74,25 +74,22 @@ namespace SteamCmdWeb.Services
                 return null;
             }
 
-            if (!profile.AnonymousLogin)
+            try
             {
-                try
+                // Giải mã thông tin đăng nhập
+                if (!string.IsNullOrEmpty(profile.SteamUsername))
                 {
-                    // Giải mã thông tin đăng nhập
-                    if (!string.IsNullOrEmpty(profile.SteamUsername))
-                    {
-                        profile.SteamUsername = _decryptionService.DecryptString(profile.SteamUsername);
-                    }
+                    profile.SteamUsername = _decryptionService.DecryptString(profile.SteamUsername);
+                }
 
-                    if (!string.IsNullOrEmpty(profile.SteamPassword))
-                    {
-                        profile.SteamPassword = _decryptionService.DecryptString(profile.SteamPassword);
-                    }
-                }
-                catch (Exception ex)
+                if (!string.IsNullOrEmpty(profile.SteamPassword))
                 {
-                    _logger.LogError(ex, "Lỗi khi giải mã thông tin đăng nhập của profile {Id}", id);
+                    profile.SteamPassword = _decryptionService.DecryptString(profile.SteamPassword);
                 }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi giải mã thông tin đăng nhập của profile {Id}", id);
             }
 
             return profile;
@@ -107,26 +104,23 @@ namespace SteamCmdWeb.Services
 
             var profiles = await GetAllProfilesAsync();
 
-            // Mã hóa thông tin đăng nhập nếu cần
-            if (!profile.AnonymousLogin)
+            // Mã hóa thông tin đăng nhập
+            try
             {
-                try
+                if (!string.IsNullOrEmpty(profile.SteamUsername))
                 {
-                    if (!string.IsNullOrEmpty(profile.SteamUsername))
-                    {
-                        profile.SteamUsername = _decryptionService.EncryptString(profile.SteamUsername);
-                    }
+                    profile.SteamUsername = _decryptionService.EncryptString(profile.SteamUsername);
+                }
 
-                    if (!string.IsNullOrEmpty(profile.SteamPassword))
-                    {
-                        profile.SteamPassword = _decryptionService.EncryptString(profile.SteamPassword);
-                    }
-                }
-                catch (Exception ex)
+                if (!string.IsNullOrEmpty(profile.SteamPassword))
                 {
-                    _logger.LogError(ex, "Lỗi khi mã hóa thông tin đăng nhập");
-                    throw;
+                    profile.SteamPassword = _decryptionService.EncryptString(profile.SteamPassword);
                 }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi mã hóa thông tin đăng nhập");
+                throw;
             }
 
             // Tạo ID mới
@@ -158,26 +152,23 @@ namespace SteamCmdWeb.Services
                 return false;
             }
 
-            // Mã hóa thông tin đăng nhập nếu cần
-            if (!profile.AnonymousLogin)
+            // Mã hóa thông tin đăng nhập
+            try
             {
-                try
+                if (!string.IsNullOrEmpty(profile.SteamUsername))
                 {
-                    if (!string.IsNullOrEmpty(profile.SteamUsername))
-                    {
-                        profile.SteamUsername = _decryptionService.EncryptString(profile.SteamUsername);
-                    }
+                    profile.SteamUsername = _decryptionService.EncryptString(profile.SteamUsername);
+                }
 
-                    if (!string.IsNullOrEmpty(profile.SteamPassword))
-                    {
-                        profile.SteamPassword = _decryptionService.EncryptString(profile.SteamPassword);
-                    }
-                }
-                catch (Exception ex)
+                if (!string.IsNullOrEmpty(profile.SteamPassword))
                 {
-                    _logger.LogError(ex, "Lỗi khi mã hóa thông tin đăng nhập");
-                    throw;
+                    profile.SteamPassword = _decryptionService.EncryptString(profile.SteamPassword);
                 }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi mã hóa thông tin đăng nhập");
+                throw;
             }
 
             // Cập nhật profile

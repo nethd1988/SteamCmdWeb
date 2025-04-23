@@ -73,7 +73,6 @@ namespace SteamCmdWeb.Controllers
                     {
                         TotalProfiles = profiles.Count,
                         ActiveProfiles = profiles.Count(p => p.Status == "Running"),
-                        AnonymousProfiles = profiles.Count(p => p.AnonymousLogin),
                         LastModified = profiles.Any() ? profiles.Max(p => p.LastRun) : (DateTime?)null
                     },
                     NetworkInfo = new

@@ -57,25 +57,16 @@ namespace SteamCmdWeb.Pages.Profiles
                     return Page();
                 }
 
-                // Xử lý thông tin đăng nhập
-                if (Profile.AnonymousLogin)
+                // Kiểm tra thông tin đăng nhập bắt buộc
+                if (string.IsNullOrEmpty(Profile.SteamUsername) || string.IsNullOrEmpty(Profile.SteamPassword))
                 {
-                    Profile.SteamUsername = string.Empty;
-                    Profile.SteamPassword = string.Empty;
+                    ErrorMessage = "Thông tin đăng nhập là bắt buộc";
+                    return Page();
                 }
-                else if (!string.IsNullOrEmpty(Profile.SteamUsername) || !string.IsNullOrEmpty(Profile.SteamPassword))
-                {
-                    // Mã hóa thông tin đăng nhập
-                    if (!string.IsNullOrEmpty(Profile.SteamUsername))
-                    {
-                        Profile.SteamUsername = _decryptionService.EncryptString(Profile.SteamUsername);
-                    }
-                    
-                    if (!string.IsNullOrEmpty(Profile.SteamPassword))
-                    {
-                        Profile.SteamPassword = _decryptionService.EncryptString(Profile.SteamPassword);
-                    }
-                }
+
+                // Mã hóa thông tin đăng nhập
+                Profile.SteamUsername = _decryptionService.EncryptString(Profile.SteamUsername);
+                Profile.SteamPassword = _decryptionService.EncryptString(Profile.SteamPassword);
 
                 // Đặt trạng thái mặc định
                 Profile.Status = "Ready";

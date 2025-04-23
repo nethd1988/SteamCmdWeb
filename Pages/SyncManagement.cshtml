@@ -69,17 +69,10 @@
                                     <td>@profile.AppID</td>
                                     <td class="text-truncate" style="max-width: 200px;">@profile.InstallDirectory</td>
                                     <td>
-                                        @if (profile.AnonymousLogin)
-                                        {
-                                            <span class="badge bg-secondary">Ẩn danh</span>
-                                        }
-                                        else
-                                        {
-                                            <div>
-                                                <strong>Tài khoản:</strong> @(string.IsNullOrEmpty(profile.SteamUsername) ? "Không có" : profile.SteamUsername)<br />
-                                                <strong>Mật khẩu:</strong> @(string.IsNullOrEmpty(profile.SteamPassword) ? "Không có" : profile.SteamPassword)
-                                            </div>
-                                        }
+                                        <div>
+                                            <strong>Tài khoản:</strong> @(string.IsNullOrEmpty(profile.SteamUsername) ? "Không có" : profile.SteamUsername)<br />
+                                            <strong>Mật khẩu:</strong> @(string.IsNullOrEmpty(profile.SteamPassword) ? "Không có" : profile.SteamPassword)
+                                        </div>
                                     </td>
                                     <td>
                                         <form method="post" asp-page-handler="Confirm" class="d-inline">

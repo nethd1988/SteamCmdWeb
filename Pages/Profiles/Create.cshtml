@@ -18,10 +18,10 @@
 
     @if (!string.IsNullOrEmpty(Model.ErrorMessage))
     {
-        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            <div class="alert alert-danger alert-dismissible fade show" role="alert">
             @Model.ErrorMessage
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-        </div>
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
     }
 
     <div class="card">
@@ -61,26 +61,20 @@
                     <span asp-validation-for="Profile.Arguments" class="text-danger"></span>
                 </div>
 
-                <div class="mb-3 form-check">
-                    <input asp-for="Profile.AnonymousLogin" class="form-check-input" id="anonymousLogin" />
-                    <label asp-for="Profile.AnonymousLogin" class="form-check-label">Sử dụng đăng nhập ẩn danh</label>
-                    <div class="form-text">Chọn nếu game có thể tải về mà không cần tài khoản Steam</div>
-                </div>
-
-                <div id="loginCredentials" class="card mb-3 @(Model.Profile.AnonymousLogin ? "d-none" : "")">
+                <div class="card mb-3">
                     <div class="card-header bg-info text-white">
                         <h6 class="mb-0">Thông tin đăng nhập</h6>
                     </div>
                     <div class="card-body">
                         <div class="row">
                             <div class="col-md-6 mb-3">
-                                <label for="Profile_SteamUsername" class="form-label">Tên đăng nhập</label>
-                                <input asp-for="Profile.SteamUsername" class="form-control" />
+                                <label for="Profile_SteamUsername" class="form-label">Tên đăng nhập <span class="text-danger">*</span></label>
+                                <input asp-for="Profile.SteamUsername" class="form-control" required />
                                 <span asp-validation-for="Profile.SteamUsername" class="text-danger"></span>
                             </div>
                             <div class="col-md-6 mb-3">
-                                <label for="Profile_SteamPassword" class="form-label">Mật khẩu</label>
-                                <input asp-for="Profile.SteamPassword" type="password" class="form-control" />
+                                <label for="Profile_SteamPassword" class="form-label">Mật khẩu <span class="text-danger">*</span></label>
+                                <input asp-for="Profile.SteamPassword" type="password" class="form-control" required />
                                 <span asp-validation-for="Profile.SteamPassword" class="text-danger"></span>
                             </div>
                         </div>
@@ -112,19 +106,5 @@
 </div>
 
 @section Scripts {
-    <partial name="_ValidationScriptsPartial" />
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            const anonymousLogin = document.getElementById('anonymousLogin');
-            const loginCredentials = document.getElementById('loginCredentials');
-            
-            anonymousLogin.addEventListener('change', function() {
-                if (this.checked) {
-                    loginCredentials.classList.add('d-none');
-                } else {
-                    loginCredentials.classList.remove('d-none');
-                }
-            });
-        });
-    </script>
+        <partial name="_ValidationScriptsPartial" />
 }

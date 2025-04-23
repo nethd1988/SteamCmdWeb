@@ -76,17 +76,10 @@
                             <tr>
                                 <th style="width: 150px;">Đăng nhập:</th>
                                 <td>
-                                    @if (Model.Profile.AnonymousLogin)
-                                    {
-                                        <span class="badge bg-secondary">Ẩn danh</span>
-                                    }
-                                    else
-                                    {
-                                        <div>
-                                            <strong>Tài khoản:</strong> @Model.Profile.SteamUsername<br />
-                                            <strong>Mật khẩu:</strong> ********
-                                        </div>
-                                    }
+                                    <div>
+                                        <strong>Tài khoản:</strong> @Model.Profile.SteamUsername<br />
+                                        <strong>Mật khẩu:</strong> ********
+                                    </div>
                                 </td>
                             </tr>
                             <tr>
@@ -135,7 +128,7 @@
                         <a asp-page="Edit" asp-route-id="@Model.Profile.Id" class="btn btn-primary">
                             <i class="bi bi-pencil me-1"></i> Chỉnh sửa
                         </a>
-                        <button type="button class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#deleteConfirmModal">
+                        <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#deleteConfirmModal">
                             <i class="bi bi-trash me-1"></i> Xóa
                         </button>
                     </div>

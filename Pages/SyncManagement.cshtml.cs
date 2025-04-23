@@ -44,55 +44,46 @@ namespace SteamCmdWeb.Pages
                 // Giải mã thông tin đăng nhập cho tất cả các profile
                 foreach (var profile in PendingProfiles)
                 {
-                    if (!profile.AnonymousLogin)
+                    try
                     {
-                        try
+                        // Không cần kiểm tra IsBased64String vì có thể gây lỗi với một số ký tự đặc biệt
+                        if (!string.IsNullOrEmpty(profile.SteamUsername))
                         {
-                            // Không cần kiểm tra IsBased64String vì có thể gây lỗi với một số ký tự đặc biệt
-                            if (!string.IsNullOrEmpty(profile.SteamUsername))
+                            try
                             {
-                                try
+                                string decryptedUsername = _decryptionService.DecryptString(profile.SteamUsername);
+                                if (!string.IsNullOrEmpty(decryptedUsername))
                                 {
-                                    string decryptedUsername = _decryptionService.DecryptString(profile.SteamUsername);
-                                    if (!string.IsNullOrEmpty(decryptedUsername))
-                                    {
-                                        profile.SteamUsername = decryptedUsername;
-                                    }
-                                    // Nếu giải mã trả về chuỗi rỗng, giữ nguyên giá trị
+                                    profile.SteamUsername = decryptedUsername;
                                 }
-                                catch
-                                {
-                                    // Giữ nguyên giá trị nếu không thể giải mã
-                                }
+                                // Nếu giải mã trả về chuỗi rỗng, giữ nguyên giá trị
                             }
-
-                            // Mật khẩu hiển thị dưới dạng đã được mã hóa
-                            if (!string.IsNullOrEmpty(profile.SteamPassword))
+                            catch
                             {
-                                try
-                                {
-                                    string decryptedPassword = _decryptionService.DecryptString(profile.SteamPassword);
-                                    if (!string.IsNullOrEmpty(decryptedPassword))
-                                    {
-                                        profile.SteamPassword = decryptedPassword;
-                                    }
-                                }
-                                catch
-                                {
-                                    // Giữ nguyên giá trị nếu không thể giải mã
-                                }
+                                // Giữ nguyên giá trị nếu không thể giải mã
                             }
                         }
-                        catch
+
+                        // Mật khẩu hiển thị dưới dạng đã được mã hóa
+                        if (!string.IsNullOrEmpty(profile.SteamPassword))
                         {
-                            // Nếu có lỗi, giữ nguyên giá trị
+                            try
+                            {
+                                string decryptedPassword = _decryptionService.DecryptString(profile.SteamPassword);
+                                if (!string.IsNullOrEmpty(decryptedPassword))
+                                {
+                                    profile.SteamPassword = decryptedPassword;
+                                }
+                            }
+                            catch
+                            {
+                                // Giữ nguyên giá trị nếu không thể giải mã
+                            }
                         }
                     }
-                    else
+                    catch
                     {
-                        // Đảm bảo hiển thị thông báo cho tài khoản ẩn danh
-                        profile.SteamUsername = "Không có (Ẩn danh)";
-                        profile.SteamPassword = "Không có (Ẩn danh)";
+                        // Nếu có lỗi, giữ nguyên giá trị
                     }
                 }
             }

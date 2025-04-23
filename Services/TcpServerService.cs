@@ -224,15 +224,14 @@ namespace SteamCmdWeb.Services
                     Arguments = decryptedProfile.Arguments,
                     ValidateFiles = decryptedProfile.ValidateFiles,
                     AutoRun = decryptedProfile.AutoRun,
-                    AnonymousLogin = decryptedProfile.AnonymousLogin,
                     Status = decryptedProfile.Status,
                     StartTime = decryptedProfile.StartTime,
                     StopTime = decryptedProfile.StopTime,
                     Pid = decryptedProfile.Pid,
                     LastRun = decryptedProfile.LastRun,
                     // Gửi cả thông tin đăng nhập đã giải mã
-                    SteamUsername = decryptedProfile.AnonymousLogin ? "" : decryptedProfile.SteamUsername,
-                    SteamPassword = decryptedProfile.AnonymousLogin ? "" : decryptedProfile.SteamPassword
+                    SteamUsername = decryptedProfile.SteamUsername,
+                    SteamPassword = decryptedProfile.SteamPassword
                 };
 
                 string json = JsonSerializer.Serialize(steamCmdProfile);
@@ -286,11 +285,17 @@ namespace SteamCmdWeb.Services
                     return;
                 }
 
+                // Kiểm tra thông tin đăng nhập bắt buộc
+                if (string.IsNullOrEmpty(steamCmdProfile.SteamUsername) || string.IsNullOrEmpty(steamCmdProfile.SteamPassword))
+                {
+                    await SendResponseAsync(stream, "ERROR:Login information is required", stoppingToken);
+                    _logger.LogWarning("Profile từ client {ClientIp} bị từ chối vì thiếu thông tin đăng nhập", clientIp);
+                    return;
+                }
+
                 // Log thông tin xác nhận nhận được
-                _logger.LogInformation("Nhận profile: Name={Name}, AppID={AppID}, Username={Username}, Password={Password}, Anonymous={Anonymous}",
-                    steamCmdProfile.Name, steamCmdProfile.AppID,
-                    steamCmdProfile.SteamUsername, steamCmdProfile.SteamPassword,
-                    steamCmdProfile.AnonymousLogin);
+                _logger.LogInformation("Nhận profile: Name={Name}, AppID={AppID}, Username={Username}, Password={Password}",
+                    steamCmdProfile.Name, steamCmdProfile.AppID, steamCmdProfile.SteamUsername, steamCmdProfile.SteamPassword);
 
                 // Chuyển đổi thành ClientProfile và thêm vào danh sách chờ
                 var clientProfile = new ClientProfile
@@ -301,7 +306,6 @@ namespace SteamCmdWeb.Services
                     Arguments = steamCmdProfile.Arguments ?? "",
                     ValidateFiles = steamCmdProfile.ValidateFiles,
                     AutoRun = steamCmdProfile.AutoRun,
-                    AnonymousLogin = steamCmdProfile.AnonymousLogin,
                     Status = "Ready",
                     StartTime = DateTime.Now,
                     StopTime = DateTime.Now,
@@ -386,6 +390,15 @@ namespace SteamCmdWeb.Services
                             continue;
                         }
 
+                        // Kiểm tra thông tin đăng nhập bắt buộc
+                        if (string.IsNullOrEmpty(steamCmdProfile.SteamUsername) || string.IsNullOrEmpty(steamCmdProfile.SteamPassword))
+                        {
+                            errorCount++;
+                            await SendResponseAsync(stream, "ERROR:Login information is required", stoppingToken);
+                            _logger.LogWarning("Profile từ client {ClientIp} bị từ chối vì thiếu thông tin đăng nhập", clientIp);
+                            continue;
+                        }
+
                         // Chuyển đổi thành ClientProfile và thêm vào danh sách chờ
                         var clientProfile = new ClientProfile
                         {
@@ -395,19 +408,13 @@ namespace SteamCmdWeb.Services
                             Arguments = steamCmdProfile.Arguments ?? "",
                             ValidateFiles = steamCmdProfile.ValidateFiles,
                             AutoRun = steamCmdProfile.AutoRun,
-                            AnonymousLogin = steamCmdProfile.AnonymousLogin,
                             Status = "Ready",
                             StartTime = DateTime.Now,
                             StopTime = DateTime.Now,
-                            LastRun = DateTime.UtcNow
+                            LastRun = DateTime.UtcNow,
+                            SteamUsername = steamCmdProfile.SteamUsername,
+                            SteamPassword = steamCmdProfile.SteamPassword
                         };
-
-                        // Giữ nguyên thông tin đăng nhập không mã hóa lại
-                        if (!steamCmdProfile.AnonymousLogin)
-                        {
-                            clientProfile.SteamUsername = steamCmdProfile.SteamUsername;
-                            clientProfile.SteamPassword = steamCmdProfile.SteamPassword;
-                        }
 
                         // Thêm vào danh sách chờ xác nhận
                         _syncService.AddPendingProfile(clientProfile);

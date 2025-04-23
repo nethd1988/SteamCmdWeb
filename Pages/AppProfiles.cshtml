@@ -91,24 +91,16 @@
                             <input type="text" class="form-control" name="installDirectory" required>
                         </div>
                         <div class="col-md-6 mb-3">
-                            <label class="form-label">Tài khoản Steam</label>
-                            <input type="text" class="form-control" name="steamUsername" id="steamUsername">
+                            <label class="form-label">Tài khoản Steam <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" name="steamUsername" id="steamUsername" required>
                         </div>
                         <div class="col-md-6 mb-3">
-                            <label class="form-label">Mật khẩu Steam</label>
+                            <label class="form-label">Mật khẩu Steam <span class="text-danger">*</span></label>
                             <div class="input-group">
-                                <input type="password" class="form-control" name="steamPassword" id="steamPassword">
+                                <input type="password" class="form-control" name="steamPassword" id="steamPassword" required>
                                 <button class="btn btn-outline-secondary" type="button" id="togglePassword">
                                     <i class="bi bi-eye"></i>
                                 </button>
-                            </div>
-                        </div>
-                        <div class="col-12 mb-3">
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" name="anonymousLogin" id="anonymousLogin">
-                                <label class="form-check-label" for="anonymousLogin">
-                                    Đăng nhập ẩn danh
-                                </label>
                             </div>
                         </div>
                     </div>
@@ -142,50 +134,50 @@
 </div>
 
 @section Scripts {
-<script>
-    document.addEventListener('DOMContentLoaded', function() {
-        // Xử lý toggle mật khẩu
-        const togglePasswordBtn = document.getElementById('togglePassword');
-        const passwordInput = document.getElementById('steamPassword');
-        
-        togglePasswordBtn.addEventListener('click', function() {
-            const type = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
-            passwordInput.setAttribute('type', type);
-            
-            // Thay đổi icon
-            const icon = this.querySelector('i');
-            icon.classList.toggle('bi-eye');
-            icon.classList.toggle('bi-eye-slash');
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Xử lý toggle mật khẩu
+            const togglePasswordBtn = document.getElementById('togglePassword');
+            const passwordInput = document.getElementById('steamPassword');
+
+            togglePasswordBtn.addEventListener('click', function() {
+                const type = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
+                passwordInput.setAttribute('type', type);
+
+                // Thay đổi icon
+                const icon = this.querySelector('i');
+                icon.classList.toggle('bi-eye');
+                icon.classList.toggle('bi-eye-slash');
+            });
+
+            // Xử lý xóa profile
+            function confirmDelete(id, name) {
+                document.getElementById('deleteProfileName').textContent = name;
+                const deleteModal = new bootstrap.Modal(document.getElementById('deleteConfirmModal'));
+                deleteModal.show();
+
+                document.getElementById('confirmDeleteBtn').onclick = function() {
+                    fetch(`/api/profiles/${id}`, { method: 'DELETE' })
+                        .then(response => {
+                            if (!response.ok) throw new Error('Không thể xóa profile');
+                            location.reload();
+                        })
+                        .catch(error => {
+                            console.error('Lỗi:', error);
+                            alert('Đã xảy ra lỗi khi xóa profile');
+                        });
+                };
+            }
+
+            // Gán sự kiện xóa cho toàn bộ nút xóa
+            const deleteButtons = document.querySelectorAll('[onclick^="confirmDelete"]');
+            deleteButtons.forEach(btn => {
+                btn.onclick = function() {
+                    const id = this.getAttribute('onclick').match(/\((\d+),/)[1];
+                    const name = this.getAttribute('onclick').match(/'([^']*)'/)[1];
+                    confirmDelete(id, name);
+                };
+            });
         });
-
-        // Xử lý xóa profile
-        function confirmDelete(id, name) {
-            document.getElementById('deleteProfileName').textContent = name;
-            const deleteModal = new bootstrap.Modal(document.getElementById('deleteConfirmModal'));
-            deleteModal.show();
-
-            document.getElementById('confirmDeleteBtn').onclick = function() {
-                fetch(`/api/profiles/${id}`, { method: 'DELETE' })
-                    .then(response => {
-                        if (!response.ok) throw new Error('Không thể xóa profile');
-                        location.reload();
-                    })
-                    .catch(error => {
-                        console.error('Lỗi:', error);
-                        alert('Đã xảy ra lỗi khi xóa profile');
-                    });
-            };
-        }
-
-        // Gán sự kiện xóa cho toàn bộ nút xóa
-        const deleteButtons = document.querySelectorAll('[onclick^="confirmDelete"]');
-        deleteButtons.forEach(btn => {
-            btn.onclick = function() {
-                const id = this.getAttribute('onclick').match(/\((\d+),/)[1];
-                const name = this.getAttribute('onclick').match(/'([^']*)'/)[1];
-                confirmDelete(id, name);
-            };
-        });
-    });
-</script>
+    </script>
 }

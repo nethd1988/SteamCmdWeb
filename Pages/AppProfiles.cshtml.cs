@@ -37,9 +37,11 @@ namespace SteamCmdWeb.Pages
             }
         }
 
-        public IActionResult OnPostAdd(string name, string appId, string installDirectory, string steamUsername, string steamPassword, bool anonymousLogin)
+        public IActionResult OnPostAdd(string name, string appId, string installDirectory, string steamUsername, string steamPassword)
         {
-            if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(appId) || string.IsNullOrEmpty(installDirectory))
+            if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(appId) ||
+                string.IsNullOrEmpty(installDirectory) || string.IsNullOrEmpty(steamUsername) ||
+                string.IsNullOrEmpty(steamPassword))
             {
                 _logger.LogWarning("Dữ liệu profile không hợp lệ");
                 TempData["ErrorMessage"] = "Vui lòng điền đầy đủ thông tin bắt buộc!";
@@ -54,8 +56,7 @@ namespace SteamCmdWeb.Pages
                     AppID = appId,
                     InstallDirectory = installDirectory,
                     SteamUsername = steamUsername,
-                    SteamPassword = string.IsNullOrEmpty(steamPassword) ? "" : _profileManager.EncryptString(steamPassword),
-                    AnonymousLogin = anonymousLogin,
+                    SteamPassword = _profileManager.EncryptString(steamPassword),
                     Status = "Ready",
                     StartTime = DateTime.Now,
                     StopTime = DateTime.Now,
@@ -63,10 +64,10 @@ namespace SteamCmdWeb.Pages
                 };
 
                 _profileManager.AddProfile(profile);
-                
+
                 _logger.LogInformation("Đã thêm profile mới: {Name} (ID: {Id})", profile.Name, profile.Id);
                 TempData["SuccessMessage"] = "Thêm profile thành công!";
-                
+
                 return RedirectToPage("./AppProfiles");
             }
             catch (Exception ex)
