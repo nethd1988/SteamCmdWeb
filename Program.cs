@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using SteamCmdWeb.Services;
+using SteamCmdWeb.Middleware;
 using System;
 using System.IO;
 using System.Text.Json;
@@ -33,6 +34,15 @@ builder.Services.AddRazorPages();
 builder.Services.AddSingleton<DecryptionService>();
 builder.Services.AddSingleton<ProfileService>();
 builder.Services.AddSingleton<SyncService>();
+builder.Services.AddSingleton<ProfileMigrationService>();
+builder.Services.AddSingleton<AppProfileManager>();
+builder.Services.AddSingleton<SystemMonitoringService>();
+
+// Thêm dịch vụ tracking client
+builder.Services.AddSingleton<ClientTrackingService>();
+builder.Services.AddHostedService<ClientInactivityService>();
+
+// Đăng ký TcpServerService
 builder.Services.AddHostedService<TcpServerService>();
 
 // Thêm Memory Cache cho cải thiện hiệu suất
@@ -61,6 +71,9 @@ else
 app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseRouting();
+
+// Thêm middleware client tracking
+app.UseClientTracking();
 
 // Ánh xạ các endpoint
 app.MapControllers();

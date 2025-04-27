@@ -16,95 +16,221 @@
         </nav>
     </div>
 
-    @if (!string.IsNullOrEmpty(Model.ErrorMessage))
-    {
-            <div class="alert alert-danger alert-dismissible fade show" role="alert">
-            @Model.ErrorMessage
-                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    <div class="mb-3">
+        <button type="button" id="scanGamesBtn" class="btn btn-info" data-bs-toggle="tooltip" title="Quét các thư mục trên máy tính để tìm game đã cài đặt">
+            <i class="bi bi-search"></i> Quét danh sách game
+        </button>
+    </div>
+
+    <div class="row">
+        <!-- Phần nhập thông tin cấu hình - Bên trái -->
+        <div class="col-md-8">
+            @if (!string.IsNullOrEmpty(Model.ErrorMessage))
+            {
+                <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                    @Model.ErrorMessage
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            }
+
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">
+                        <i class="bi bi-plus-circle me-2"></i>
+                        Thông tin profile mới
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <form method="post">
+                        <div class="mb-3">
+                            <label asp-for="Profile.Name" class="form-label">Tên profile <span class="text-danger">*</span></label>
+                            <input asp-for="Profile.Name" class="form-control" required />
+                            <span asp-validation-for="Profile.Name" class="text-danger"></span>
+                        </div>
+
+                        <div class="mb-3">
+                            <label asp-for="Profile.AppID" class="form-label">App ID <span class="text-danger">*</span></label>
+                            <div class="input-group">
+                                <input asp-for="Profile.AppID" class="form-control" required />
+                                <a href="https://steamdb.info/" target="_blank" class="btn btn-outline-secondary" title="Tìm App ID trên SteamDB">
+                                    <i class="bi bi-search"></i> SteamDB
+                                </a>
+                            </div>
+                            <div class="form-text">ID của game trên Steam (VD: 730 cho CS:GO)</div>
+                            <span asp-validation-for="Profile.AppID" class="text-danger"></span>
+                        </div>
+
+                        <div class="mb-3">
+                            <label asp-for="Profile.InstallDirectory" class="form-label">Thư mục cài đặt <span class="text-danger">*</span></label>
+                            <input asp-for="Profile.InstallDirectory" class="form-control" required />
+                            <div class="form-text">Đường dẫn đầy đủ tới thư mục cài đặt game</div>
+                            <span asp-validation-for="Profile.InstallDirectory" class="text-danger"></span>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="Username" class="form-label">Tài khoản Steam</label>
+                            <input asp-for="Username" class="form-control mb-2" placeholder="Tên đăng nhập Steam" />
+                            <input asp-for="Password" type="password" class="form-control" placeholder="Mật khẩu Steam" />
+                            <small class="text-muted">Để trống nếu muốn đăng nhập ẩn danh</small>
+                        </div>
+
+                        <div class="mb-3">
+                            <label asp-for="Profile.Arguments" class="form-label">Tham số bổ sung</label>
+                            <input asp-for="Profile.Arguments" class="form-control" />
+                            <div class="form-text">Các tham số bổ sung cho SteamCMD (không bắt buộc)</div>
+                            <span asp-validation-for="Profile.Arguments" class="text-danger"></span>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <div class="form-check">
+                                    <input asp-for="Profile.ValidateFiles" class="form-check-input" />
+                                    <label asp-for="Profile.ValidateFiles" class="form-check-label">Kiểm tra tính toàn vẹn của file</label>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-check">
+                                    <input asp-for="Profile.AutoRun" class="form-check-input" />
+                                    <label asp-for="Profile.AutoRun" class="form-check-label">Tự động chạy khi khởi động</label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="d-flex justify-content-end">
+                            <a href="/Profiles" class="btn btn-secondary me-2">Hủy</a>
+                            <button type="submit" class="btn btn-primary">Tạo profile</button>
+                        </div>
+                    </form>
+                </div>
             </div>
-    }
-
-    <div class="card">
-        <div class="card-header bg-primary text-white">
-            <h5 class="mb-0">
-                <i class="bi bi-plus-circle me-2"></i>
-                Thông tin profile mới
-            </h5>
         </div>
-        <div class="card-body">
-            <form method="post">
-                <div class="row">
-                    <div class="col-md-6 mb-3">
-                        <label asp-for="Profile.Name" class="form-label">Tên profile <span class="text-danger">*</span></label>
-                        <input asp-for="Profile.Name" class="form-control" required />
-                        <span asp-validation-for="Profile.Name" class="text-danger"></span>
-                    </div>
-                    <div class="col-md-6 mb-3">
-                        <label asp-for="Profile.AppID" class="form-label">App ID <span class="text-danger">*</span></label>
-                        <input asp-for="Profile.AppID" class="form-control" required />
-                        <div class="form-text">ID của game trên Steam (VD: 730 cho CS:GO)</div>
-                        <span asp-validation-for="Profile.AppID" class="text-danger"></span>
-                    </div>
-                </div>
 
-                <div class="mb-3">
-                    <label asp-for="Profile.InstallDirectory" class="form-label">Thư mục cài đặt <span class="text-danger">*</span></label>
-                    <input asp-for="Profile.InstallDirectory" class="form-control" required />
-                    <div class="form-text">Đường dẫn đầy đủ tới thư mục cài đặt game</div>
-                    <span asp-validation-for="Profile.InstallDirectory" class="text-danger"></span>
+        <!-- Phần hướng dẫn - Bên phải -->
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0">
+                        <i class="bi bi-question-circle me-2"></i>
+                        Hướng dẫn
+                    </h5>
                 </div>
+                <div class="card-body">
+                    <h6>Cách tạo profile mới</h6>
+                    <p>Nhập thông tin cần thiết cho profile game:</p>
 
-                <div class="mb-3">
-                    <label asp-for="Profile.Arguments" class="form-label">Tham số bổ sung</label>
-                    <input asp-for="Profile.Arguments" class="form-control" data-val="false" />
-                    <div class="form-text">Các tham số bổ sung cho SteamCMD (không bắt buộc)</div>
-                    <span asp-validation-for="Profile.Arguments" class="text-danger"></span>
-                </div>
+                    <ul>
+                        <li><strong>Tên Profile:</strong> Tên để nhận diện profile</li>
+                        <li><strong>App ID:</strong> ID của game trên Steam</li>
+                        <li><strong>Đường dẫn cài đặt:</strong> Thư mục cài đặt game</li>
+                        <li><strong>Tham số bổ sung:</strong> Các tham số tùy chọn</li>
+                    </ul>
 
-                <div class="card mb-3">
-                    <div class="card-header bg-info text-white">
-                        <h6 class="mb-0">Thông tin đăng nhập</h6>
-                    </div>
-                    <div class="card-body">
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <label for="Profile_SteamUsername" class="form-label">Tên đăng nhập <span class="text-danger">*</span></label>
-                                <input asp-for="Profile.SteamUsername" class="form-control" required />
-                                <span asp-validation-for="Profile.SteamUsername" class="text-danger"></span>
-                            </div>
-                            <div class="col-md-6 mb-3">
-                                <label for="Profile_SteamPassword" class="form-label">Mật khẩu <span class="text-danger">*</span></label>
-                                <input asp-for="Profile.SteamPassword" type="password" class="form-control" required />
-                                <span asp-validation-for="Profile.SteamPassword" class="text-danger"></span>
-                            </div>
-                        </div>
+                    <p>Nếu game yêu cầu đăng nhập, hãy nhập thông tin tài khoản Steam.</p>
+
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i> Bạn có thể sử dụng nút "Quét danh sách game" để tự động tìm kiếm các game đã cài đặt trên máy.
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
+</div>
 
-                <div class="row mb-3">
-                    <div class="col-md-6">
-                        <div class="form-check">
-                            <input asp-for="Profile.ValidateFiles" class="form-check-input" />
-                            <label asp-for="Profile.ValidateFiles" class="form-check-label">Kiểm tra tính toàn vẹn của file</label>
-                        </div>
-                    </div>
-                    <div class="col-md-6">
-                        <div class="form-check">
-                            <input asp-for="Profile.AutoRun" class="form-check-input" />
-                            <label asp-for="Profile.AutoRun" class="form-check-label">Tự động chạy khi khởi động</label>
-                        </div>
-                    </div>
+<!-- Modal để hiển thị danh sách game scan được -->
+<div class="modal fade" id="gamesModal" tabindex="-1" aria-labelledby="gamesModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="gamesModalLabel">Chọn game để tạo Profile</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle"></i> Nhấp vào game để điền thông tin vào form.
                 </div>
-
-                <div class="d-flex justify-content-end">
-                    <a href="/Profiles" class="btn btn-secondary me-2">Hủy</a>
-                    <button type="submit" class="btn btn-primary">Tạo profile</button>
+                <div class="input-group mb-3">
+                    <span class="input-group-text"><i class="bi bi-search"></i></span>
+                    <input type="text" class="form-control" id="gameSearchInput" placeholder="Tìm kiếm game...">
                 </div>
-            </form>
+                <div id="gamesList" class="list-group" style="max-height: 400px; overflow-y: auto;">
+                    <!-- Danh sách game sẽ được thêm vào đây -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Đóng</button>
+            </div>
         </div>
     </div>
 </div>
 
 @section Scripts {
-        <partial name="_ValidationScriptsPartial" />
+    <partial name="_ValidationScriptsPartial" />
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Xử lý tìm kiếm trong modal games
+            document.getElementById('gameSearchInput').addEventListener('keyup', function() {
+                var value = this.value.toLowerCase();
+                var listItems = document.querySelectorAll('#gamesList .list-group-item');
+                listItems.forEach(function(item) {
+                    var text = item.textContent.toLowerCase();
+                    item.style.display = text.indexOf(value) > -1 ? '' : 'none';
+                });
+            });
+
+            // Xử lý nút scan games
+            document.getElementById('scanGamesBtn').addEventListener('click', function() {
+                var btn = this;
+                btn.disabled = true;
+                btn.innerHTML = '<i class="bi bi-hourglass"></i> Đang quét...';
+
+                fetch('?handler=ScanGames')
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success && data.games && data.games.length > 0) {
+                            // Hiển thị danh sách game
+                            var gamesList = document.getElementById('gamesList');
+                            gamesList.innerHTML = '';
+
+                            data.games.forEach(function(game) {
+                                var listItem = document.createElement('div');
+                                listItem.className = 'list-group-item list-group-item-action';
+                                listItem.innerHTML = `
+                                    <h6 class="mb-1">${game.gameName}</h6>
+                                    <small>
+                                        App ID: ${game.appId}<br>
+                                        Đường dẫn: ${game.installDir}
+                                    </small>
+                                `;
+
+                                listItem.addEventListener('click', function() {
+                                    // Điền thông tin vào form
+                                    document.getElementById('Profile_Name').value = game.gameName;
+                                    document.getElementById('Profile_AppID').value = game.appId;
+                                    document.getElementById('Profile_InstallDirectory').value = game.installDir;
+
+                                    // Đóng modal
+                                    var modal = bootstrap.Modal.getInstance(document.getElementById('gamesModal'));
+                                    modal.hide();
+                                });
+
+                                gamesList.appendChild(listItem);
+                            });
+
+                            // Hiển thị modal
+                            var modal = new bootstrap.Modal(document.getElementById('gamesModal'));
+                            modal.show();
+                        } else {
+                            alert(data.message || 'Không tìm thấy game nào');
+                        }
+                    })
+                    .catch(error => {
+                        alert('Lỗi khi quét game: ' + error);
+                    })
+                    .finally(() => {
+                        btn.disabled = false;
+                        btn.innerHTML = '<i class="bi bi-search"></i> Quét danh sách game';
+                    });
+            });
+        });
+    </script>
 }

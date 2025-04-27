@@ -1,0 +1,122 @@
+@page
+@model SteamCmdWeb.Pages.ClientTrackingModel
+@{
+    ViewData["Title"] = "Client Tracking";
+}
+
+<div class="container">
+    <h1>Theo dõi Client</h1>
+
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card text-white bg-success">
+                <div class="card-body">
+                    <h5 class="card-title">Online</h5>
+                    <h2 id="onlineCount">0</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-white bg-primary">
+                <div class="card-body">
+                    <h5 class="card-title">Tổng số</h5>
+                    <h2 id="totalCount">0</h2>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h5 class="mb-0">Danh sách Client</h5>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-striped table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>Client ID</th>
+                            <th>Remote IP</th>
+                            <th>Inverter IP</th>
+                            <th>Status</th>
+                            <th>Connected Time</th>
+                            <th>Last Active</th>
+                            <th>Connection Count</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="clientsTableBody">
+                        
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        function loadClients() {
+            fetch('/api/clienttracking')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        updateDashboard(data);
+                    } else {
+                        console.error('Error loading clients:', data.message);
+                    }
+                })
+                .catch(error => console.error('Error:', error));
+        }
+
+        function updateDashboard(data) {
+            document.getElementById('onlineCount').textContent = data.onlineCount;
+            document.getElementById('totalCount').textContent = data.totalCount;
+
+            const tbody = document.getElementById('clientsTableBody');
+            tbody.innerHTML = '';
+
+            data.clients.forEach(client => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${client.clientId}</td>
+                    <td>${client.remoteIp}</td>
+                    <td>${client.inverterIp || 'N/A'}</td>
+                    <td>
+                        <span class="badge bg-${client.status === 'Online' ? 'success' : 'secondary'}">
+                            ${client.status}
+                        </span>
+                    </td>
+                    <td>${new Date(client.connectedTime).toLocaleString()}</td>
+                    <td>${new Date(client.lastActiveTime).toLocaleString()}</td>
+                    <td>${client.connectionCount}</td>
+                    <td>
+                        <button class="btn btn-sm btn-danger" onclick="removeClient('${client.clientId}')">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        function removeClient(clientId) {
+            if (confirm('Are you sure you want to remove this client?')) {
+                fetch(`/api/clienttracking/${clientId}`, { method: 'DELETE' })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            loadClients();
+                        } else {
+                            alert('Error removing client: ' + data.message);
+                        }
+                    })
+                    .catch(error => console.error('Error:', error));
+            }
+        }
+
+        // Load clients every 5 seconds
+        loadClients();
+        setInterval(loadClients, 5000);
+    </script>
+}
