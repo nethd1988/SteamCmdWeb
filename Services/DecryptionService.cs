@@ -52,10 +52,31 @@ namespace SteamCmdWeb.Services
 
         public string DecryptString(string cipherText)
         {
-            if (string.IsNullOrEmpty(cipherText) || cipherText == "encrypted") return string.Empty;
+            if (string.IsNullOrEmpty(cipherText)) return string.Empty;
+
+            // Xử lý các trường hợp đặc biệt
+            if (cipherText == "encrypted" || cipherText == "***") return string.Empty;
 
             try
             {
+                // Kiểm tra chuỗi base64 hợp lệ
+                bool isBase64 = false;
+                try
+                {
+                    byte[] data = Convert.FromBase64String(cipherText);
+                    isBase64 = true;
+                }
+                catch
+                {
+                    isBase64 = false;
+                }
+
+                if (!isBase64)
+                {
+                    // Nếu không phải base64, trả về chuỗi gốc, giả định đó là chuỗi thường
+                    return cipherText;
+                }
+
                 byte[] cipherBytes = Convert.FromBase64String(cipherText);
                 using (Aes encryptor = Aes.Create())
                 {
@@ -82,8 +103,10 @@ namespace SteamCmdWeb.Services
             }
             catch (Exception ex)
             {
+                // Ghi log lỗi
                 Console.WriteLine($"Lỗi giải mã: {ex.Message}");
-                return string.Empty;
+                // Trả về chuỗi gốc nếu không thể giải mã
+                return cipherText;
             }
         }
     }

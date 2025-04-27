@@ -74,25 +74,73 @@ namespace SteamCmdWeb.Services
                 return null;
             }
 
+            // Tạo bản sao để không ảnh hưởng đến dữ liệu gốc
+            var decryptedProfile = new ClientProfile
+            {
+                Id = profile.Id,
+                Name = profile.Name,
+                AppID = profile.AppID,
+                InstallDirectory = profile.InstallDirectory,
+                Arguments = profile.Arguments,
+                ValidateFiles = profile.ValidateFiles,
+                AutoRun = profile.AutoRun,
+                Status = profile.Status,
+                StartTime = profile.StartTime,
+                StopTime = profile.StopTime,
+                LastRun = profile.LastRun,
+                Pid = profile.Pid,
+                SteamUsername = profile.SteamUsername,
+                SteamPassword = profile.SteamPassword
+            };
+
             try
             {
-                // Giải mã thông tin đăng nhập
-                if (!string.IsNullOrEmpty(profile.SteamUsername))
+                // Thử giải mã SteamUsername nếu có
+                if (!string.IsNullOrEmpty(decryptedProfile.SteamUsername))
                 {
-                    profile.SteamUsername = _decryptionService.DecryptString(profile.SteamUsername);
+                    try
+                    {
+                        string decryptedUsername = _decryptionService.DecryptString(decryptedProfile.SteamUsername);
+                        // Nếu giải mã thành công và kết quả không rỗng, sử dụng kết quả giải mã
+                        if (!string.IsNullOrEmpty(decryptedUsername))
+                        {
+                            decryptedProfile.SteamUsername = decryptedUsername;
+                        }
+                        // Nếu không thành công, giữ nguyên giá trị gốc
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Không thể giải mã SteamUsername cho profile {Id}, giữ nguyên giá trị gốc", id);
+                        // Giữ nguyên giá trị gốc
+                    }
                 }
 
-                if (!string.IsNullOrEmpty(profile.SteamPassword))
+                // Thử giải mã SteamPassword nếu có
+                if (!string.IsNullOrEmpty(decryptedProfile.SteamPassword))
                 {
-                    profile.SteamPassword = _decryptionService.DecryptString(profile.SteamPassword);
+                    try
+                    {
+                        string decryptedPassword = _decryptionService.DecryptString(decryptedProfile.SteamPassword);
+                        // Nếu giải mã thành công và kết quả không rỗng, sử dụng kết quả giải mã
+                        if (!string.IsNullOrEmpty(decryptedPassword))
+                        {
+                            decryptedProfile.SteamPassword = decryptedPassword;
+                        }
+                        // Nếu không thành công, giữ nguyên giá trị gốc
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Không thể giải mã SteamPassword cho profile {Id}, giữ nguyên giá trị gốc", id);
+                        // Giữ nguyên giá trị gốc
+                    }
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Lỗi khi giải mã thông tin đăng nhập của profile {Id}", id);
+                _logger.LogError(ex, "Lỗi tổng thể khi giải mã thông tin đăng nhập cho profile {Id}", id);
             }
 
-            return profile;
+            return decryptedProfile;
         }
 
         public async Task<ClientProfile> AddProfileAsync(ClientProfile profile)

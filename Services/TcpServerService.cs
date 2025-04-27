@@ -107,7 +107,7 @@ namespace SteamCmdWeb.Services
                     if (dataLength <= 0 || dataLength > MaxDataLength)
                     {
                         _logger.LogWarning("Độ dài dữ liệu không hợp lệ từ client {ClientIp}: {Length}", clientIp, dataLength);
-                        await SendResponseAsync(stream, "ERROR:Invalid data length", CancellationToken.None);
+                        await SendResponseAsync(stream, "ERROR:Invalid data length", stoppingToken);
                         return;
                     }
 
@@ -158,7 +158,7 @@ namespace SteamCmdWeb.Services
                     if (client != null && client.Connected)
                     {
                         using NetworkStream errorStream = client.GetStream();
-                        await SendResponseAsync(errorStream, "ERROR:Internal server error", CancellationToken.None);
+                        await SendResponseAsync(errorStream, "ERROR:Internal server error", stoppingToken);
                     }
                 }
                 catch (Exception sendEx)
@@ -174,44 +174,39 @@ namespace SteamCmdWeb.Services
 
         private string ExtractClientIdFromCommand(string command)
         {
-            _logger.LogDebug("Extracting ClientID from command: {Command}", command);
-            if (command.Contains("CLIENT_ID:"))
+            try
             {
-                try
+                if (command.Contains("CLIENT_ID:"))
                 {
                     int startIndex = command.IndexOf("CLIENT_ID:") + 10;
                     int endIndex = command.IndexOf(" ", startIndex);
                     if (endIndex == -1) endIndex = command.Length;
 
-                    string clientId = command.Substring(startIndex, endIndex - startIndex);
-                    _logger.LogInformation("Extracted ClientID: {ClientId}", clientId);
-                    return clientId;
+                    if (endIndex > startIndex)
+                    {
+                        string clientId = command.Substring(startIndex, endIndex - startIndex);
+                        _logger.LogDebug("Extracted ClientID: {ClientId}", clientId);
+                        return clientId;
+                    }
                 }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Error extracting ClientID from command");
-                }
-            }
 
-            if (command.StartsWith("AUTH:"))
-            {
-                try
+                if (command.StartsWith("AUTH:"))
                 {
                     string[] parts = command.Split(' ', 3);
                     if (parts.Length > 0 && parts[0].StartsWith("AUTH:"))
                     {
                         string authToken = parts[0].Substring(5);
-                        return $"anonymous-{authToken.GetHashCode()}";
+                        return $"anonymous-{Math.Abs(authToken.GetHashCode())}";
                     }
                 }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Error extracting auth token for fallback ClientID");
-                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi trích xuất ClientID từ lệnh");
             }
 
             string randomId = $"unknown-{Guid.NewGuid().ToString().Substring(0, 8)}";
-            _logger.LogWarning("Could not extract ClientID, using random ID: {RandomId}", randomId);
+            _logger.LogDebug("Sử dụng ID ngẫu nhiên: {RandomId}", randomId);
             return randomId;
         }
 
@@ -234,9 +229,11 @@ namespace SteamCmdWeb.Services
 
             string authToken = authParts[0].Substring(5);
             string actualCommandPart = "";
+            string clientId = "unknown";
 
             if (authParts.Length >= 3 && authParts[1].StartsWith("CLIENT_ID:"))
             {
+                clientId = authParts[1].Substring(10);
                 actualCommandPart = authParts[2];
             }
             else if (authParts.Length >= 2)
@@ -276,6 +273,10 @@ namespace SteamCmdWeb.Services
             {
                 await HandleReceiveProfilesAsync(stream, clientIp, stoppingToken);
             }
+            else if (actualCommandPart == "HEARTBEAT")
+            {
+                await HandleHeartbeatAsync(stream, clientId, clientIp, stoppingToken);
+            }
             else
             {
                 await SendResponseAsync(stream, "UNKNOWN_COMMAND", stoppingToken);
@@ -289,65 +290,93 @@ namespace SteamCmdWeb.Services
 
             try
             {
+                // Thử các cách phân tích JSON khác nhau
+                Exception lastException = null;
+
+                // Cách 1: Sử dụng System.Text.Json
                 try
                 {
-                    clientProfile = JsonSerializer.Deserialize<ClientProfile>(json);
+                    var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                    clientProfile = JsonSerializer.Deserialize<ClientProfile>(json, options);
+                    if (clientProfile != null) goto ProfileDeserialized;
                 }
-                catch
+                catch (Exception ex)
                 {
-                    try
+                    lastException = ex;
+                    _logger.LogDebug("Không thể phân tích bằng System.Text.Json: {Message}", ex.Message);
+                }
+
+                // Cách 2: Sử dụng Newtonsoft.Json
+                try
+                {
+                    clientProfile = Newtonsoft.Json.JsonConvert.DeserializeObject<ClientProfile>(json);
+                    if (clientProfile != null) goto ProfileDeserialized;
+                }
+                catch (Exception ex)
+                {
+                    lastException = ex;
+                    _logger.LogDebug("Không thể phân tích bằng Newtonsoft.Json: {Message}", ex.Message);
+                }
+
+                // Cách 3: Thử chuyển đổi từ SteamCmdProfile
+                try
+                {
+                    var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                    var steamCmdProfile = JsonSerializer.Deserialize<SteamCmdWebAPI.Models.SteamCmdProfile>(json, options);
+                    if (steamCmdProfile != null)
                     {
-                        clientProfile = Newtonsoft.Json.JsonConvert.DeserializeObject<ClientProfile>(json);
-                    }
-                    catch
-                    {
-                        try
+                        clientProfile = new ClientProfile
                         {
-                            var steamCmdProfile = JsonSerializer.Deserialize<SteamCmdWebAPI.Models.SteamCmdProfile>(json);
-                            if (steamCmdProfile != null)
-                            {
-                                clientProfile = new ClientProfile
-                                {
-                                    Name = steamCmdProfile.Name,
-                                    AppID = steamCmdProfile.AppID,
-                                    InstallDirectory = steamCmdProfile.InstallDirectory ?? "",
-                                    Arguments = steamCmdProfile.Arguments ?? "",
-                                    ValidateFiles = steamCmdProfile.ValidateFiles,
-                                    AutoRun = steamCmdProfile.AutoRun,
-                                    Status = "Pending",
-                                    SteamUsername = steamCmdProfile.SteamUsername,
-                                    SteamPassword = steamCmdProfile.SteamPassword,
-                                    StartTime = DateTime.Now,
-                                    StopTime = DateTime.Now,
-                                    LastRun = DateTime.UtcNow
-                                };
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogError(ex, "Không thể chuyển đổi JSON sang bất kỳ định dạng Profile nào");
-                            return false;
-                        }
+                            Name = steamCmdProfile.Name ?? "Unknown",
+                            AppID = steamCmdProfile.AppID ?? "",
+                            InstallDirectory = steamCmdProfile.InstallDirectory ?? "",
+                            Arguments = steamCmdProfile.Arguments ?? "",
+                            ValidateFiles = steamCmdProfile.ValidateFiles,
+                            AutoRun = steamCmdProfile.AutoRun,
+                            Status = "Pending",
+                            SteamUsername = steamCmdProfile.SteamUsername,
+                            SteamPassword = steamCmdProfile.SteamPassword,
+                            StartTime = DateTime.Now,
+                            StopTime = DateTime.Now,
+                            LastRun = DateTime.UtcNow
+                        };
+                        goto ProfileDeserialized;
                     }
                 }
+                catch (Exception ex)
+                {
+                    lastException = ex;
+                    _logger.LogDebug("Không thể chuyển từ SteamCmdProfile: {Message}", ex.Message);
+                }
+
+                // Nếu tất cả các cách đều thất bại
+                if (lastException != null)
+                {
+                    _logger.LogError(lastException, "Không thể phân tích JSON từ client {ClientIp}", clientIp);
+                }
+                else
+                {
+                    _logger.LogError("Không thể phân tích JSON từ client {ClientIp} nhưng không có lỗi cụ thể", clientIp);
+                }
+                return false;
+
+            ProfileDeserialized:
+                if (clientProfile == null || string.IsNullOrWhiteSpace(clientProfile.Name))
+                {
+                    _logger.LogWarning("Profile không hợp lệ hoặc bị trống sau khi chuyển đổi");
+                    return false;
+                }
+
+                // Thêm vào hàng đợi, không cố gắng giải mã
+                _logger.LogInformation("Thêm profile vào danh sách chờ: Name={Name}", clientProfile.Name);
+                _syncService.AddPendingProfile(clientProfile);
+                return true;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Lỗi khi xử lý dữ liệu JSON từ client {ClientIp}", clientIp);
+                _logger.LogError(ex, "Lỗi tổng thể khi xử lý dữ liệu JSON từ client {ClientIp}", clientIp);
                 return false;
             }
-
-            if (clientProfile == null || string.IsNullOrWhiteSpace(clientProfile.Name))
-            {
-                _logger.LogWarning("Profile không hợp lệ hoặc bị trống sau khi chuyển đổi");
-                return false;
-            }
-
-            _logger.LogInformation("Thêm profile vào danh sách chờ: Name={Name}, Username={Username}",
-                clientProfile.Name, clientProfile.SteamUsername);
-
-            _syncService.AddPendingProfile(clientProfile);
-            return true;
         }
 
         private async Task HandleGetProfilesAsync(NetworkStream stream, CancellationToken stoppingToken)
@@ -401,18 +430,19 @@ namespace SteamCmdWeb.Services
                     return;
                 }
 
+                // Bảo đảm giá trị không null
                 var profileToSend = new SteamCmdWebAPI.Models.SteamCmdProfile
                 {
                     Id = decryptedProfile.Id,
-                    Name = decryptedProfile.Name,
-                    AppID = decryptedProfile.AppID,
-                    InstallDirectory = decryptedProfile.InstallDirectory,
-                    SteamUsername = decryptedProfile.SteamUsername,
-                    SteamPassword = decryptedProfile.SteamPassword,
-                    Arguments = decryptedProfile.Arguments,
+                    Name = decryptedProfile.Name ?? "",
+                    AppID = decryptedProfile.AppID ?? "",
+                    InstallDirectory = decryptedProfile.InstallDirectory ?? "",
+                    SteamUsername = decryptedProfile.SteamUsername ?? "",
+                    SteamPassword = decryptedProfile.SteamPassword ?? "",
+                    Arguments = decryptedProfile.Arguments ?? "",
                     ValidateFiles = decryptedProfile.ValidateFiles,
                     AutoRun = decryptedProfile.AutoRun,
-                    Status = decryptedProfile.Status,
+                    Status = decryptedProfile.Status ?? "Ready",
                     LastRun = decryptedProfile.LastRun
                 };
 
@@ -434,7 +464,7 @@ namespace SteamCmdWeb.Services
                 await SendResponseAsync(stream, "READY_TO_RECEIVE", stoppingToken);
 
                 byte[] lengthBuffer = new byte[4];
-                int bytesRead = await stream.ReadAsync(lengthBuffer.AsMemory(0, 4), stoppingToken);
+                int bytesRead = await stream.ReadAsync(lengthBuffer, 0, 4, stoppingToken);
                 if (bytesRead < 4)
                 {
                     _logger.LogWarning("Không đọc được thông tin độ dài từ client {ClientIp}", clientIp);
@@ -453,7 +483,7 @@ namespace SteamCmdWeb.Services
                 int totalBytesRead = 0;
                 while (totalBytesRead < dataLength && !stoppingToken.IsCancellationRequested)
                 {
-                    bytesRead = await stream.ReadAsync(dataBuffer.AsMemory(totalBytesRead, dataLength - totalBytesRead), stoppingToken);
+                    bytesRead = await stream.ReadAsync(dataBuffer, totalBytesRead, dataLength - totalBytesRead, stoppingToken);
                     if (bytesRead == 0) break;
                     totalBytesRead += bytesRead;
                 }
@@ -497,7 +527,7 @@ namespace SteamCmdWeb.Services
                 while (!stoppingToken.IsCancellationRequested)
                 {
                     byte[] lengthBuffer = new byte[4];
-                    int bytesRead = await stream.ReadAsync(lengthBuffer.AsMemory(0, 4), stoppingToken);
+                    int bytesRead = await stream.ReadAsync(lengthBuffer, 0, 4, stoppingToken);
                     if (bytesRead < 4)
                     {
                         _logger.LogWarning("Không đọc được thông tin độ dài từ client {ClientIp}", clientIp);
@@ -523,7 +553,7 @@ namespace SteamCmdWeb.Services
                     int totalBytesRead = 0;
                     while (totalBytesRead < dataLength && !stoppingToken.IsCancellationRequested)
                     {
-                        bytesRead = await stream.ReadAsync(dataBuffer.AsMemory(totalBytesRead, dataLength - totalBytesRead), stoppingToken);
+                        bytesRead = await stream.ReadAsync(dataBuffer, totalBytesRead, dataLength - totalBytesRead, stoppingToken);
                         if (bytesRead == 0) break;
                         totalBytesRead += bytesRead;
                     }
@@ -559,6 +589,27 @@ namespace SteamCmdWeb.Services
             }
         }
 
+        private async Task HandleHeartbeatAsync(NetworkStream stream, string clientId, string clientIp, CancellationToken stoppingToken)
+        {
+            try
+            {
+                _logger.LogDebug("Nhận heartbeat từ client {ClientId} ({ClientIp})", clientId, clientIp);
+
+                // Cập nhật trạng thái client là online
+                _clientTrackingService.TrackClient(clientId, clientIp);
+
+                // Gửi phản hồi ACK
+                await SendResponseAsync(stream, "ACK", stoppingToken);
+
+                _logger.LogDebug("Đã gửi phản hồi heartbeat cho client {ClientId}", clientId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi xử lý heartbeat từ client {ClientId}", clientId);
+                await SendResponseAsync(stream, "ERROR:Internal server error", stoppingToken);
+            }
+        }
+
         private async Task SendResponseAsync(NetworkStream stream, string response, CancellationToken stoppingToken)
         {
             try
@@ -566,8 +617,8 @@ namespace SteamCmdWeb.Services
                 byte[] responseBytes = Encoding.UTF8.GetBytes(response);
                 byte[] lengthBytes = BitConverter.GetBytes(responseBytes.Length);
 
-                await stream.WriteAsync(lengthBytes.AsMemory(0, 4), stoppingToken);
-                await stream.WriteAsync(responseBytes.AsMemory(0, responseBytes.Length), stoppingToken);
+                await stream.WriteAsync(lengthBytes, 0, 4, stoppingToken);
+                await stream.WriteAsync(responseBytes, 0, responseBytes.Length, stoppingToken);
                 await stream.FlushAsync(stoppingToken);
             }
             catch (Exception ex)

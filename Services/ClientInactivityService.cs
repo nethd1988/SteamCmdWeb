@@ -11,7 +11,7 @@ namespace SteamCmdWeb.Services
         private readonly ILogger<ClientInactivityService> _logger;
         private readonly ClientTrackingService _clientTrackingService;
         private readonly TimeSpan _checkInterval = TimeSpan.FromMinutes(1);
-        private readonly TimeSpan _inactivityThreshold = TimeSpan.FromMinutes(5);
+        private readonly TimeSpan _inactivityThreshold = TimeSpan.FromMinutes(15);
 
         public ClientInactivityService(
             ILogger<ClientInactivityService> logger,

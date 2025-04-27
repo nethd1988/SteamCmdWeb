@@ -44,10 +44,18 @@ namespace SteamCmdWeb.Services
         // Thêm profile vào danh sách chờ xác nhận
         public void AddPendingProfile(ClientProfile profile)
         {
-            _logger.LogInformation("Thêm profile vào danh sách chờ: Name={Name}, Username={Username}, Password={Password}",
-                profile.Name, profile.SteamUsername, profile.SteamPassword);
+            try
+            {
+                // Bỏ qua thông tin nhạy cảm trong log
+                _logger.LogInformation("Thêm profile vào danh sách chờ: Name={Name}", profile.Name);
 
-            _pendingProfiles.Add(profile);
+                // QUAN TRỌNG: Không thử tự động giải mã ở đây, chỉ lưu giá trị gốc
+                _pendingProfiles.Add(profile);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi thêm profile vào danh sách chờ");
+            }
         }
 
         // Xác nhận profile theo index
