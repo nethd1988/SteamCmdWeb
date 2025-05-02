@@ -5,6 +5,7 @@ using SteamCmdWeb.Models;
 using SteamCmdWeb.Services;
 using System;
 using System.Threading.Tasks;
+using System.Linq;
 
 namespace SteamCmdWeb.Pages.Profiles
 {
@@ -16,12 +17,6 @@ namespace SteamCmdWeb.Pages.Profiles
 
         [BindProperty]
         public ClientProfile Profile { get; set; }
-
-        [BindProperty]
-        public string NewUsername { get; set; }
-
-        [BindProperty]
-        public string NewPassword { get; set; }
 
         [TempData]
         public string SuccessMessage { get; set; }
@@ -64,11 +59,17 @@ namespace SteamCmdWeb.Pages.Profiles
             {
                 if (!ModelState.IsValid)
                 {
-                    var errors = string.Join("; ", ModelState.Values
+                    // Loại bỏ các lỗi liên quan đến username và password
+                    var errors = ModelState.Values
                         .SelectMany(v => v.Errors)
-                        .Select(e => e.ErrorMessage));
-                    ErrorMessage = $"Thông tin không hợp lệ: {errors}";
-                    return Page();
+                        .Where(e => !e.ErrorMessage.Contains("Username") && !e.ErrorMessage.Contains("Password"))
+                        .Select(e => e.ErrorMessage);
+                        
+                    if (errors.Any())
+                    {
+                        ErrorMessage = $"Thông tin không hợp lệ: {string.Join("; ", errors)}";
+                        return Page();
+                    }
                 }
 
                 // Chỉ cập nhật 2 trường: Name và AppID

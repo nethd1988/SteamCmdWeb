@@ -30,6 +30,9 @@ builder.Services.AddControllers()
 
 builder.Services.AddRazorPages();
 
+// Thêm HttpClient
+builder.Services.AddHttpClient();
+
 // Đăng ký các dịch vụ tùy chỉnh
 builder.Services.AddSingleton<DecryptionService>();
 builder.Services.AddSingleton<ProfileService>();
@@ -37,6 +40,7 @@ builder.Services.AddSingleton<SyncService>();
 builder.Services.AddSingleton<ProfileMigrationService>();
 builder.Services.AddSingleton<AppProfileManager>();
 builder.Services.AddSingleton<SystemMonitoringService>();
+builder.Services.AddSingleton<SteamAppService>();
 
 // Thêm dịch vụ tracking client
 builder.Services.AddSingleton<ClientTrackingService>();
