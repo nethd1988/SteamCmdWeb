@@ -40,69 +40,15 @@
                 <input type="hidden" asp-for="Profile.StopTime" />
                 <input type="hidden" asp-for="Profile.LastRun" />
 
-                <div class="row">
-                    <div class="col-md-6 mb-3">
-                        <label asp-for="Profile.Name" class="form-label">Tên profile <span class="text-danger">*</span></label>
-                        <input asp-for="Profile.Name" class="form-control" required />
-                        <span asp-validation-for="Profile.Name" class="text-danger"></span>
-                    </div>
-                    <div class="col-md-6 mb-3">
-                        <label asp-for="Profile.AppID" class="form-label">App ID <span class="text-danger">*</span></label>
-                        <input asp-for="Profile.AppID" class="form-control" required />
-                        <div class="form-text">ID của game trên Steam (VD: 730 cho CS:GO)</div>
-                        <span asp-validation-for="Profile.AppID" class="text-danger"></span>
-                    </div>
-                </div>
-
                 <div class="mb-3">
-                    <label asp-for="Profile.InstallDirectory" class="form-label">Thư mục cài đặt <span class="text-danger">*</span></label>
-                    <input asp-for="Profile.InstallDirectory" class="form-control" required />
-                    <div class="form-text">Đường dẫn đầy đủ tới thư mục cài đặt game</div>
-                    <span asp-validation-for="Profile.InstallDirectory" class="text-danger"></span>
+                    <label asp-for="Profile.Name" class="form-label">Tên Profile <span class="text-danger">*</span></label>
+                    <input asp-for="Profile.Name" class="form-control" required />
+                    <span asp-validation-for="Profile.Name" class="text-danger"></span>
                 </div>
-
                 <div class="mb-3">
-                    <label asp-for="Profile.Arguments" class="form-label">Tham số bổ sung</label>
-                    <input asp-for="Profile.Arguments" class="form-control" />
-                    <div class="form-text">Các tham số bổ sung cho SteamCMD (không bắt buộc)</div>
-                    <span asp-validation-for="Profile.Arguments" class="text-danger"></span>
+                    <label asp-for="Profile.AppID" class="form-label">App IDs (cách nhau bởi dấu phẩy)</label>
+                    <input asp-for="Profile.AppID" class="form-control" placeholder="VD: 570,730,440" />
                 </div>
-
-                <div class="card mb-3">
-                    <div class="card-header bg-info text-white">
-                        <h6 class="mb-0">Thông tin đăng nhập</h6>
-                    </div>
-                    <div class="card-body">
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <label asp-for="NewUsername" class="form-label">Tên đăng nhập <span class="text-danger">*</span></label>
-                                <input asp-for="NewUsername" class="form-control" placeholder="Để trống nếu không thay đổi" />
-                                <span asp-validation-for="NewUsername" class="text-danger"></span>
-                            </div>
-                            <div class="col-md-6 mb-3">
-                                <label asp-for="NewPassword" class="form-label">Mật khẩu <span class="text-danger">*</span></label>
-                                <input asp-for="NewPassword" type="password" class="form-control" placeholder="Để trống nếu không thay đổi" />
-                                <span asp-validation-for="NewPassword" class="text-danger"></span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="row mb-3">
-                    <div class="col-md-6">
-                        <div class="form-check">
-                            <input asp-for="Profile.ValidateFiles" class="form-check-input" />
-                            <label asp-for="Profile.ValidateFiles" class="form-check-label">Kiểm tra tính toàn vẹn của file</label>
-                        </div>
-                    </div>
-                    <div class="col-md-6">
-                        <div class="form-check">
-                            <input asp-for="Profile.AutoRun" class="form-check-input" />
-                            <label asp-for="Profile.AutoRun" class="form-check-label">Tự động chạy khi khởi động</label>
-                        </div>
-                    </div>
-                </div>
-
                 <div class="d-flex justify-content-end">
                     <a href="/Profiles" class="btn btn-secondary me-2">Hủy</a>
                     <button type="submit" class="btn btn-primary">Lưu thay đổi</button>

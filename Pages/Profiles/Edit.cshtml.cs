@@ -71,53 +71,23 @@ namespace SteamCmdWeb.Pages.Profiles
                     return Page();
                 }
 
+                // Chỉ cập nhật 2 trường: Name và AppID
                 var existingProfile = await _profileService.GetProfileByIdAsync(Profile.Id);
                 if (existingProfile == null)
                 {
-                    return NotFound();
-                }
-
-                // Cập nhật username nếu có thay đổi
-                if (!string.IsNullOrEmpty(NewUsername))
-                {
-                    Profile.SteamUsername = _decryptionService.EncryptString(NewUsername);
-                }
-                else
-                {
-                    Profile.SteamUsername = existingProfile.SteamUsername;
-                }
-
-                // Cập nhật password nếu có thay đổi
-                if (!string.IsNullOrEmpty(NewPassword))
-                {
-                    Profile.SteamPassword = _decryptionService.EncryptString(NewPassword);
-                }
-                else
-                {
-                    Profile.SteamPassword = existingProfile.SteamPassword;
-                }
-
-                // Giữ nguyên các thông tin không thay đổi
-                Profile.StartTime = existingProfile.StartTime;
-                Profile.StopTime = existingProfile.StopTime;
-                Profile.LastRun = existingProfile.LastRun;
-                Profile.Pid = existingProfile.Pid;
-
-                // Cập nhật profile
-                var success = await _profileService.UpdateProfileAsync(Profile);
-                if (!success)
-                {
-                    ErrorMessage = "Không thể cập nhật profile.";
+                    ErrorMessage = "Không tìm thấy profile để cập nhật.";
                     return Page();
                 }
+                existingProfile.Name = Profile.Name;
+                existingProfile.AppID = Profile.AppID;
 
-                _logger.LogInformation("Đã cập nhật profile có ID {0}", Profile.Id);
-                SuccessMessage = $"Đã cập nhật profile '{Profile.Name}' thành công.";
+                await _profileService.UpdateProfileAsync(existingProfile);
+                SuccessMessage = $"Đã cập nhật profile '{existingProfile.Name}' thành công.";
                 return RedirectToPage("Index");
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Lỗi khi cập nhật profile có ID {0}", Profile.Id);
+                _logger.LogError(ex, "Lỗi khi cập nhật profile");
                 ErrorMessage = $"Đã xảy ra lỗi khi cập nhật profile: {ex.Message}";
                 return Page();
             }

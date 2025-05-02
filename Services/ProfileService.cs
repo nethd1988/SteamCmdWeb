@@ -270,5 +270,18 @@ namespace SteamCmdWeb.Services
 
             await Task.CompletedTask;
         }
+
+        // Khi lưu profiles ra file JSON, chỉ serialize các trường Name, AppID, SteamUsername, SteamPassword
+        public async Task SaveProfilesToFileAsync(IEnumerable<ClientProfile> profiles, string filePath)
+        {
+            var minimalProfiles = profiles.Select(p => new {
+                Name = p.Name,
+                AppID = p.AppID,
+                SteamUsername = p.SteamUsername,
+                SteamPassword = p.SteamPassword
+            }).ToList();
+            var json = System.Text.Json.JsonSerializer.Serialize(minimalProfiles, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+            await System.IO.File.WriteAllTextAsync(filePath, json);
+        }
     }
 }

@@ -121,5 +121,26 @@ namespace SteamCmdWeb.Controllers
                 return StatusCode(500, new { error = "Lỗi khi xóa profile" });
             }
         }
+
+        [HttpGet("client")]
+        public async Task<IActionResult> GetAllProfilesForClient()
+        {
+            try
+            {
+                var profiles = await _profileService.GetAllProfilesAsync();
+                // Nếu muốn trả về đã giải mã, có thể giải mã ở đây hoặc dùng hàm riêng
+                // Nếu không muốn trả về password, có thể set null ở đây
+                foreach (var profile in profiles)
+                {
+                    // profile.SteamPassword = null; // Nếu không muốn trả về password
+                }
+                return Ok(profiles);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi lấy danh sách profiles cho client");
+                return StatusCode(500, new { error = "Lỗi khi lấy danh sách profiles cho client" });
+            }
+        }
     }
 }

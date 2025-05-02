@@ -21,12 +21,6 @@ namespace SteamCmdWeb.Pages.Profiles
         [BindProperty]
         public ClientProfile Profile { get; set; } = new ClientProfile();
 
-        [BindProperty]
-        public string Username { get; set; } = string.Empty;
-
-        [BindProperty]
-        public string Password { get; set; } = string.Empty;
-
         [TempData]
         public string SuccessMessage { get; set; }
 
@@ -67,23 +61,16 @@ namespace SteamCmdWeb.Pages.Profiles
                     return Page();
                 }
 
-                // Mã hóa thông tin đăng nhập
-                if (!string.IsNullOrEmpty(Username))
-                {
-                    Profile.SteamUsername = _decryptionService.EncryptString(Username);
-                }
-
-                if (!string.IsNullOrEmpty(Password))
-                {
-                    Profile.SteamPassword = _decryptionService.EncryptString(Password);
-                }
-
-                // Đặt trạng thái mặc định
+                // Chỉ giữ lại 4 trường, các trường khác để mặc định hoặc bỏ qua
                 Profile.Status = "Ready";
                 Profile.StartTime = DateTime.Now;
                 Profile.StopTime = DateTime.Now;
                 Profile.LastRun = DateTime.UtcNow;
                 Profile.Pid = 0;
+                Profile.InstallDirectory = string.Empty;
+                Profile.Arguments = string.Empty;
+                Profile.ValidateFiles = false;
+                Profile.AutoRun = false;
 
                 // Tạo profile mới
                 var newProfile = await _profileService.AddProfileAsync(Profile);
